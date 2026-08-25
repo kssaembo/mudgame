@@ -1,4 +1,91 @@
-import { RPGLocation, RPGMonster } from './types';
+import { CustomWorldData, RPGItem, RPGJob, RPGLocation, RPGMonster } from './types';
+import { DEFAULT_GAME_STEPS } from './gameData';
+
+export const INITIAL_RPG_JOBS: { [id: string]: RPGJob } = {
+  job_hacker: {
+    id: 'job_hacker',
+    name: '화이트해커 (White Hacker)',
+    title: '디지털 보안의 수호자',
+    description: '디지털 신호 분석과 0과 1 비트 암호 해독에 능숙하며, 높은 공격력으로 요괴의 오개념을 빠르게 돌파합니다.',
+    baseHp: 100,
+    baseAttack: 20,
+    startingItems: ['초급 수사관 배지', '디지털 복제 칩'],
+    perkName: '비트 무손실 타격',
+    perkDescription: '디지털 데이터 관련 문제 정답 시 추가 대미지 부여',
+    icon: '💻'
+  },
+  job_analyst: {
+    id: 'job_analyst',
+    name: '데이터 분석가 (Data Analyst)',
+    title: '통계와 패턴의 마스터',
+    description: '아날로그와 디지털의 데이터 차이를 명확히 구분하고, 높은 통찰력으로 경험치를 더 많이 얻습니다.',
+    baseHp: 110,
+    baseAttack: 16,
+    startingItems: ['초급 수사관 배지', '정밀 바늘 센서'],
+    perkName: '정밀 패턴 분석',
+    perkDescription: '전투 승리 시 추가 EXP 획득',
+    icon: '📊'
+  },
+  job_guardian: {
+    id: 'job_guardian',
+    name: '사이버 수호관 (Cyber Guardian)',
+    title: '방어벽과 복구의 전문가',
+    description: '강인한 체력과 데이터 보호막을 보유하여 요괴의 오개념 반격에도 쉽게 쓰러지지 않습니다.',
+    baseHp: 140,
+    baseAttack: 14,
+    startingItems: ['초급 수사관 배지', '연속 스펙트럼 물약'],
+    perkName: '데이터 방화벽',
+    perkDescription: '오답 시 피격 대미지 30% 감소',
+    icon: '🛡️'
+  },
+  job_engineer: {
+    id: 'job_engineer',
+    name: '센서 엔지니어 (Sensor Engineer)',
+    title: '아날로그 자연 신호의 지배자',
+    description: '빛, 소리, 온도 등 자연의 연속적인 아날로그 신호를 디지털로 변환하는 장치를 다루는 기술자입니다.',
+    baseHp: 105,
+    baseAttack: 18,
+    startingItems: ['초급 수사관 배지', '센서 교정 키트'],
+    perkName: '파형 증폭기',
+    perkDescription: '아날로그 관련 몬스터에게 치명타',
+    icon: '📡'
+  }
+};
+
+export const INITIAL_RPG_ITEMS: { [id: string]: RPGItem } = {
+  item_heal_potion: {
+    id: 'item_heal_potion',
+    name: '연속 스펙트럼 물약',
+    type: 'potion',
+    description: '자연의 맑은 파형 에너지를 담아 체력(HP)을 40 회복합니다.',
+    effectValue: 40,
+    icon: '🧪'
+  },
+  item_sensor_needle: {
+    id: 'item_sensor_needle',
+    name: '정밀 바늘 센서',
+    type: 'equipment',
+    description: '미세한 아날로그 변화를 감지하여 공격력을 +5 영구 증가시킵니다.',
+    effectValue: 5,
+    icon: '🧭'
+  },
+  item_digital_chip: {
+    id: 'item_digital_chip',
+    name: '디지털 복제 칩',
+    type: 'chip',
+    description: '무손실 0과 1 데이터를 담아 공격력을 +10 강화합니다.',
+    effectValue: 10,
+    icon: '💾'
+  },
+  item_master_crystal: {
+    id: 'item_master_crystal',
+    name: '마스터 데이터 크리스털',
+    type: 'special',
+    description: '아날로그와 디지털의 완벽한 조화를 상징하는 승리의 보석입니다.',
+    effectValue: 100,
+    icon: '💎'
+  }
+};
 
 export const INITIAL_RPG_MONSTERS: { [id: string]: RPGMonster } = {
   m_noise: {
@@ -9,7 +96,7 @@ export const INITIAL_RPG_MONSTERS: { [id: string]: RPGMonster } = {
     maxHp: 40,
     attack: 15,
     expReward: 35,
-    itemReward: '연속 스펙트럼 물약 (HP +40 회복)',
+    itemReward: '연속 스펙트럼 물약',
     asciiArt: [
       "      ░▒▓█ [잡음 요괴] █▓▒░",
       "      ( ◣_◢ )  \"치이익~ 지지직!\"",
@@ -35,7 +122,7 @@ export const INITIAL_RPG_MONSTERS: { [id: string]: RPGMonster } = {
     maxHp: 50,
     attack: 20,
     expReward: 40,
-    itemReward: '정밀 바늘 센서 (공격력 +5 영구 증가)',
+    itemReward: '정밀 바늘 센서',
     asciiArt: [
       "       .---.   [데이터 손상 귀신]",
       "      /     \\  ( ఠ_ఠ ) \"늘어나라 테이프여!\"",
@@ -61,7 +148,7 @@ export const INITIAL_RPG_MONSTERS: { [id: string]: RPGMonster } = {
     maxHp: 60,
     attack: 20,
     expReward: 45,
-    itemReward: '디지털 복제 칩 (무손실 복제 에너지 팩)',
+    itemReward: '디지털 복제 칩',
     asciiArt: [
       "      [0] [1] [0]  [비트 왜곡 악마]",
       "     ┌─────────┐   ( ಠ益ಠ ) \"0을 1로 바꿔버리겠다!\"",
@@ -87,7 +174,7 @@ export const INITIAL_RPG_MONSTERS: { [id: string]: RPGMonster } = {
     maxHp: 100,
     attack: 25,
     expReward: 100,
-    itemReward: '마스터 데이터 크리스털 (승리의 징표)',
+    itemReward: '마스터 데이터 크리스털',
     asciiArt: [
       "             /\\___/\\",
       "            (  o o  )    < [혼돈의 데이터 드래곤] >",
@@ -217,3 +304,17 @@ export const RPG_LOCATIONS: { [id: string]: RPGLocation } = {
     clue: '학습 단서: 아날로그의 연속적 자연 신호를 센서로 수집하여 디지털 데이터(0과 1)로 변환해 처리하는 것이 현대 AI 기술의 핵심입니다.'
   }
 };
+
+export const DEFAULT_CUSTOM_WORLD: CustomWorldData = {
+  version: '1.0.0',
+  title: '국립데이터연구소: 아날로그 vs 디지털 데이터 던전',
+  description: '초등학교 6학년 실과 [데이터와 인공지능] 아날로그 데이터와 디지털 데이터의 본질적 차이 탐구 던전',
+  author: '국립데이터수사본부',
+  createdAt: new Date().toISOString(),
+  locations: RPG_LOCATIONS,
+  monsters: INITIAL_RPG_MONSTERS,
+  jobs: INITIAL_RPG_JOBS,
+  items: INITIAL_RPG_ITEMS,
+  gameSteps: DEFAULT_GAME_STEPS
+};
+

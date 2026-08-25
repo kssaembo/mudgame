@@ -1,6 +1,6 @@
 {
   "name": "데이터 탐정 MUD: 아날로그 vs 디지털",
-  "description": "90년대 PC통신 및 MS-DOS 스타일의 초등 6학년 실과 데이터(아날로그 vs 디지털) CLI 학습 텍스트 머드 게임",
+  "description": "90년대 레트로 CLI 머드 RPG 게임: 아날로그 vs 디지털 데이터 학습, 서버리스 QR/링크 공유 및 맵/몬스터/직업/아이템/퀴즈 그래픽 월드 에디터 지원",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

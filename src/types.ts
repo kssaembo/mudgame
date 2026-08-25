@@ -24,6 +24,28 @@ export interface GameStep {
   hint: string;
 }
 
+export interface RPGJob {
+  id: string;
+  name: string;
+  title: string;
+  description: string;
+  baseHp: number;
+  baseAttack: number;
+  startingItems: string[];
+  perkName: string;
+  perkDescription: string;
+  icon: string;
+}
+
+export interface RPGItem {
+  id: string;
+  name: string;
+  type: 'potion' | 'equipment' | 'chip' | 'special';
+  description: string;
+  effectValue: number;
+  icon: string;
+}
+
 export interface RPGStats {
   level: number;
   hp: number;
@@ -33,6 +55,8 @@ export interface RPGStats {
   maxExp: number;
   locationId: string;
   inventory: string[];
+  jobId: string;
+  jobTitle: string;
 }
 
 export interface RPGMonster {
@@ -61,6 +85,19 @@ export interface RPGLocation {
   monsterId?: string;
   clue?: string;
   isSanctuary?: boolean;
+}
+
+export interface CustomWorldData {
+  version: string;
+  title: string;
+  description: string;
+  author: string;
+  createdAt: string;
+  locations: { [id: string]: RPGLocation };
+  monsters: { [id: string]: RPGMonster };
+  jobs: { [id: string]: RPGJob };
+  items: { [id: string]: RPGItem };
+  gameSteps: GameStep[];
 }
 
 export interface LearningLogEntry {
@@ -96,6 +133,7 @@ export interface StudentSession {
   stats: RPGStats;
   clearedMonsters: string[];
   visitedLocations: string[];
+  customWorldTitle?: string;
 }
 
 export interface TerminalBoxData {
@@ -113,3 +151,4 @@ export interface TerminalLine {
   highlight?: boolean;
   boxData?: TerminalBoxData;
 }
+

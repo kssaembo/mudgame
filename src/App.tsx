@@ -1,28 +1,31 @@
 import { useEffect, useRef, useState } from 'react';
-import { TeacherAdminModal } from './components/TeacherAdminModal';
 import { TerminalHeader } from './components/TerminalHeader';
 import { TerminalScreen } from './components/TerminalScreen';
+import { WorldEditorModal } from './components/WorldEditorModal';
 import { ASCII_TITLE } from './gameData';
-import { INITIAL_RPG_MONSTERS, RPG_LOCATIONS } from './rpgData';
+import { DEFAULT_CUSTOM_WORLD } from './rpgData';
 import { soundFx } from './sound';
 import {
   clearStudentLogs,
   copyJsonReport,
+  decodeWorldData,
   downloadCsvLog,
   downloadResultJpg,
   getLogs,
   getStoredSession,
-  loadGameSteps,
-  resetGameStepsToDefault,
-  saveCustomGameSteps,
+  loadCustomWorld,
+  resetCustomWorldToDefault,
+  saveCustomWorld,
   saveLogEntry,
   saveSession
 } from './storage';
 import {
   ColorTheme,
+  CustomWorldData,
   Direction,
   GameStep,
   LearningLogEntry,
+  RPGJob,
   RPGMonster,
   RPGStats,
   StudentSession,
@@ -35,25 +38,85 @@ export default function App() {
   const [crtEnabled, setCrtEnabled] = useState<boolean>(true);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
 
-  // Dynamic game steps (Customizable via Teacher Admin Tool)
-  const [gameSteps, setGameSteps] = useState<GameStep[]>(() => loadGameSteps());
-  const [isAdminOpen, setIsAdminOpen] = useState<boolean>(false);
+  // Dynamic Custom World (Map, Monsters, Jobs, Items, Quizzes)
+  const [worldData, setWorldData] = useState<CustomWorldData>(() => {
+    // 1. First priority: check URL hash for shared world
+    if (typeof window !== 'undefined' && window.location.hash) {
+      const hash = window.location.hash;
+      const match = hash.match(/#world=([^&]+)/);
+      if (match && match[1]) {
+        const decoded = decodeWorldData(match[1]);
+        if (decoded) {
+          saveCustomWorld(decoded);
+          return decoded;
+        }
+      }
+    }
+    // 2. Fallback to localStorage or default
+    return loadCustomWorld();
+  });
+
+  // World Editor Modal State
+  const [isEditorOpen, setIsEditorOpen] = useState<boolean>(false);
+  const [editorInitialTab, setEditorInitialTab] = useState<'share' | 'map' | 'monsters' | 'jobs' | 'items' | 'quizzes'>('share');
 
   const [session, setSession] = useState<StudentSession | null>(null);
-  const [currentStepIndex, setCurrentStepIndex] = useState<number>(0);
   const [isCompleted, setIsCompleted] = useState<boolean>(false);
   const [stepStartTime, setStepStartTime] = useState<number>(Date.now());
   const [attemptCounts, setAttemptCounts] = useState<{ [key: string]: number }>({});
 
   // Dynamic Monsters state
-  const [monsters, setMonsters] = useState<{ [id: string]: RPGMonster }>(INITIAL_RPG_MONSTERS);
+  const [monsters, setMonsters] = useState<{ [id: string]: RPGMonster }>(() => worldData.monsters);
 
   // Active Combat state (when fighting in a room)
   const [activeBattleMonsterId, setActiveBattleMonsterId] = useState<string | null>(null);
 
+  // Pending Job selection state during new player registration
+  const [pendingPlayerName, setPendingPlayerName] = useState<string | null>(null);
+
   const [lines, setLines] = useState<TerminalLine[]>([]);
   const lineIdCounter = useRef(1);
   const hasInitializedRef = useRef(false);
+
+  // Synchronize monsters if worldData changes
+  useEffect(() => {
+    setMonsters(worldData.monsters);
+  }, [worldData]);
+
+  // Listen to hash changes if a shared link is opened while running
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash;
+      const match = hash.match(/#world=([^&]+)/);
+      if (match && match[1]) {
+        const decoded = decodeWorldData(match[1]);
+        if (decoded) {
+          setWorldData(decoded);
+          setMonsters(decoded.monsters);
+          saveCustomWorld(decoded);
+          soundFx.playLevelUp();
+          addDirectLine('box', '', true, {
+            title: '★ 외부 공유 커스텀 월드 로드 완료! ★',
+            badge: decoded.version,
+            variant: 'certificate',
+            lines: [
+              `새로운 게임 월드 [${decoded.title}]이(가) 적용되었습니다!`,
+              `• 제작자 : ${decoded.author}`,
+              `• 장소 수 : ${Object.keys(decoded.locations).length}개 구역`,
+              `• 몬스터 : ${Object.keys(decoded.monsters).length}마리`,
+              `• 직업군 : ${Object.keys(decoded.jobs || {}).length}개 직업`,
+              `• 학습 문제 : ${decoded.gameSteps?.length || 0}문항`,
+              '────────────────────────────────────────────────────────',
+              '▶ 언제든지 \'공유\' 명령어로 QR코드/링크를 생성할 수 있습니다.'
+            ]
+          });
+        }
+      }
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
 
   // Queue system for sequential typewriter line streaming
   const lineQueueRef = useRef<{
@@ -134,17 +197,27 @@ export default function App() {
     // ASCII Title
     ASCII_TITLE.forEach(l => initLines.push({ type: 'ascii', text: l, instant: true }));
 
+    // Check if loaded from custom shared URL
+    const hasCustomUrl = typeof window !== 'undefined' && window.location.hash.includes('#world=');
+
     // Introductory narrative
     initLines.push(
       { type: 'narrative', text: '' },
-      { type: 'system', text: '▶ [SYSTEM] 데이터 던전 사이버 MUD 터미널 온라인 가동 완료' },
+      { type: 'system', text: `▶ [SYSTEM] 데이터 던전 사이버 MUD 터미널 온라인 가동 완료 (월드: ${worldData.title})` },
       { type: 'system', text: '▶ 프로토콜: 100% 한글 텍스트 어드벤처 RPG [초등 6학년 실과 데이터와 인공지능]' },
       { type: 'narrative', text: '' },
       { type: 'dialogue', text: '김박사: "국립데이터연구소의 데이터 던전에 아날로그와 디지털을 왜곡하는 요괴들이 나타났습니다!"' },
       { type: 'dialogue', text: '       "동, 서, 남, 북 방향으로 이동하며 단서를 찾고, [공격]으로 요괴의 질문을 격파하십시오!"' },
       { type: 'narrative', text: '' },
-      { type: 'help', text: '※ 100% 한글 입력 전용: [동, 서, 남, 북, 봐라, 공격, 상태, 가방, 도움말, 리포트, CSV, JSON]' }
+      { type: 'help', text: '※ 100% 한글 입력: [동, 서, 남, 북, 봐라, 공격, 상태, 가방, 직업, 공유, 관리자, 도움말, 리포트, 다운]' }
     );
+
+    if (hasCustomUrl) {
+      initLines.push(
+        { type: 'narrative', text: '' },
+        { type: 'success', text: `🔗 [공유 월드 감지] '${worldData.title}'(제작: ${worldData.author}) 커스텀 월드에 성공적으로 연결되었습니다!` }
+      );
+    }
 
     if (existing && existing.stats) {
       initLines.push(
@@ -164,8 +237,11 @@ export default function App() {
 
   // Print current location / "봐라" command
   const printLookLocation = (locId: string, currentSession: StudentSession | null) => {
-    const loc = RPG_LOCATIONS[locId];
-    if (!loc) return;
+    const loc = worldData.locations[locId] || DEFAULT_CUSTOM_WORLD.locations[locId];
+    if (!loc) {
+      addDirectLine('error', `▶ 알 수 없는 위치(${locId})입니다. 입구로 이동합니다.`);
+      return;
+    }
 
     setStepStartTime(Date.now());
     const locLines: { type: TerminalLine['type']; text: string; highlight?: boolean; instant?: boolean }[] = [
@@ -187,12 +263,20 @@ export default function App() {
 
     // Exits info in Korean
     const exitDirections = Object.keys(loc.exits) as Direction[];
-    const exitNames = exitDirections.map(d => `${d}쪽: ${RPG_LOCATIONS[loc.exits[d]!]?.name.split(' (')[0]}`).join(' | ');
-    locLines.push({ type: 'system', text: `🚪 [이동 가능한 길] ${exitNames || '없음'}` });
+    const exitNames = exitDirections
+      .filter(d => !!loc.exits[d])
+      .map(d => {
+        const targetId = loc.exits[d]!;
+        const targetLoc = worldData.locations[targetId] || DEFAULT_CUSTOM_WORLD.locations[targetId];
+        return `${d}쪽: ${targetLoc ? targetLoc.name.split(' (')[0] : targetId}`;
+      })
+      .join(' | ');
+
+    locLines.push({ type: 'system', text: `🚪 [이동 가능한 길] ${exitNames || '없음 (막힌 길)'}` });
 
     // Monster info
     if (loc.monsterId) {
-      const monster = monsters[loc.monsterId];
+      const monster = monsters[loc.monsterId] || worldData.monsters[loc.monsterId];
       const isDefeated = currentSession?.clearedMonsters?.includes(loc.monsterId) || monster?.defeated;
       if (monster && !isDefeated) {
         locLines.push(
@@ -234,7 +318,7 @@ export default function App() {
 
   // Start battle with monster
   const triggerBattle = (monsterId: string) => {
-    const monster = monsters[monsterId];
+    const monster = monsters[monsterId] || worldData.monsters[monsterId];
     if (!monster) return;
 
     setActiveBattleMonsterId(monsterId);
@@ -247,16 +331,19 @@ export default function App() {
       { type: 'narrative', text: '' }
     ];
 
-    monster.asciiArt.forEach(a => battleLines.push({ type: 'ascii', text: a, instant: true }));
+    if (monster.asciiArt && monster.asciiArt.length > 0) {
+      monster.asciiArt.forEach(a => battleLines.push({ type: 'ascii', text: a, instant: true }));
+    }
+
     battleLines.push(
       { type: 'narrative', text: '' },
-      { type: 'dialogue', text: `${monster.name}: ${monster.dialogue}` },
+      { type: 'dialogue', text: `${monster.name}: "${monster.dialogue}"` },
       { type: 'narrative', text: '' },
-      { type: 'error', text: monster.questionText, highlight: true },
+      { type: 'error', text: `[문제] ${monster.questionText}`, highlight: true },
       { type: 'narrative', text: '' }
     );
 
-    monster.choices.forEach((c, idx) => {
+    monster.choices.forEach((c) => {
       battleLines.push({ type: 'narrative', text: ` [${c.key}] ${c.text}` });
     });
 
@@ -271,7 +358,7 @@ export default function App() {
   // Handle attack response
   const handleBattleAnswer = (answer: string, monsterId: string) => {
     if (!session) return;
-    const monster = monsters[monsterId];
+    const monster = monsters[monsterId] || worldData.monsters[monsterId];
     if (!monster) return;
 
     const timeSpentSec = Math.max(1, Math.round((Date.now() - stepStartTime) / 1000));
@@ -279,7 +366,9 @@ export default function App() {
     const currentAttempt = (attemptCounts[attemptKey] || 0) + 1;
     setAttemptCounts(prev => ({ ...prev, [attemptKey]: currentAttempt }));
 
-    const matchChoice = monster.choices.find(c => c.key === answer || c.text.includes(answer) || (answer === 'O' && c.key === 'O') || (answer === 'X' && c.key === 'X'));
+    const matchChoice = monster.choices.find(
+      c => c.key === answer || c.text.includes(answer) || (answer === 'O' && c.key === 'O') || (answer === 'X' && c.key === 'X')
+    );
 
     if (!matchChoice) {
       soundFx.playError();
@@ -388,22 +477,30 @@ export default function App() {
         soundFx.playLevelUp();
         winLines.push(
           { type: 'narrative', text: '' },
-          { type: 'box', text: '', instant: true, boxData: {
-            title: '★ 레 벨 업 (LEVEL UP)! ★',
-            badge: `Lv.${newLevel}`,
-            variant: 'certificate',
-            lines: [
-              `축하합니다! ${session.studentId} 요원이 Lv.${newLevel}로 승급했습니다!`,
-              `• 최대 체력(HP) : ${newMaxHp} (체력 완전 회복 ❤️)`,
-              `• 공격력(ATK)   : ${newAttack} (🗡️ +10 상승)`,
-              `• 다음 레벨까지 : ${session.stats.maxExp - newExp} EXP 필요`
-            ]
-          }}
+          {
+            type: 'box',
+            text: '',
+            instant: true,
+            boxData: {
+              title: '★ 레 벨 업 (LEVEL UP)! ★',
+              badge: `Lv.${newLevel}`,
+              variant: 'certificate',
+              lines: [
+                `축하합니다! ${session.studentId} 요원이 Lv.${newLevel}로 승급했습니다!`,
+                `• 최대 체력(HP) : ${newMaxHp} (체력 완전 회복 ❤️)`,
+                `• 공격력(ATK)   : ${newAttack} (🗡️ +10 상승)`,
+                `• 다음 레벨까지 : ${session.stats.maxExp - newExp} EXP 필요`
+              ]
+            }
+          }
         );
       }
 
-      // Check if boss defeated or all monsters cleared
-      if (monster.id === 'm_boss' || updatedCleared.length >= 4) {
+      // Check if all monsters in this world cleared or boss defeated
+      const totalMonstersCount = Object.keys(worldData.monsters).length;
+      const isBossOrAllCleared = monster.id === 'm_boss' || updatedCleared.length >= Math.max(1, totalMonstersCount);
+
+      if (isBossOrAllCleared) {
         updatedSession.completedAt = new Date().toISOString();
         setIsCompleted(true);
         setSession(updatedSession);
@@ -416,22 +513,22 @@ export default function App() {
             text: '',
             instant: true,
             boxData: {
-              title: '★ 데이터 던전 정복 & 명예 수사관 임명장 ★',
+              title: `★ [${worldData.title}] 정복 & 마스터 수사관 임명장 ★`,
               badge: 'Master Detective',
               variant: 'certificate',
               lines: [
-                `요원 성명 : ${session.studentId} (최종 Lv.${newLevel} | 🗡️ ATK ${newAttack})`,
+                `요원 성명 : ${session.studentId} (${session.stats.jobTitle || '수사관'} / 최종 Lv.${newLevel} | 🗡️ ATK ${newAttack})`,
                 `정복 일자 : ${new Date().toLocaleDateString('ko-KR')}`,
                 '────────────────────────────────────────────────────────',
-                '위 학생은 데이터 던전의 잡음 요괴, 데이터 손상 귀신, 비트 왜곡 악마,',
-                '혼돈의 데이터 드래곤을 모두 물리치고 아날로그와 디지털의 본질을',
-                '완벽히 증명하였으므로 [마스터 데이터 수사관]으로 임명합니다.',
+                `위 학생은 [${worldData.title}]의 모든 데이터 요괴를 물리치고`,
+                '아날로그와 디지털의 원리를 완벽히 증명하였으므로',
+                '[마스터 데이터 수사관]으로 임명합니다.',
                 '────────────────────────────────────────────────────────',
                 '국립사이버데이터수사본부장 ㊞'
               ]
             }
           },
-          { type: 'prompt', text: '▶ [결과 확인/제출] \'리포트\', \'CSV\', \'JSON\', \'다운\' 명령어로 결과를 확인하세요!' }
+          { type: 'prompt', text: '▶ [결과 확인/제출] \'리포트\', \'공유\', \'CSV\', \'JSON\', \'다운\' 명령어로 결과를 확인하세요!' }
         );
       } else {
         winLines.push({ type: 'prompt', text: '▶ 주변을 살피려면 \'봐라\' 또는 이동할 방향(\'동\', \'서\', \'남\', \'북\')을 입력하세요.' });
@@ -483,12 +580,66 @@ export default function App() {
         saveSession(updatedSession);
         failLines.push(
           { type: 'dialogue', text: `김박사: "포기하지 마세요! 개념을 다시 떠올려 보고 다시 답하세요!"` },
-          { type: 'prompt', text: `▶ 다시 선택지 번호(1~4)를 입력하여 공격하세요:` }
+          { type: 'prompt', text: `▶ 다시 선택지 번호(1~${monster.choices.length})를 입력하여 공격하세요:` }
         );
       }
 
       enqueueLines(failLines);
     }
+  };
+
+  // Select Job Helper
+  const applyJobToSession = (jobKey: string, studentId: string) => {
+    const jobList = Object.values(worldData.jobs || DEFAULT_CUSTOM_WORLD.jobs) as RPGJob[];
+    const selectedJob = jobList.find(
+      (j, idx) => (idx + 1).toString() === jobKey || j.id === jobKey || j.name === jobKey || j.title.includes(jobKey)
+    ) || jobList[0];
+
+    const initialStats: RPGStats = {
+      level: 1,
+      hp: selectedJob.baseHp,
+      maxHp: selectedJob.baseHp,
+      attack: selectedJob.baseAttack,
+      exp: 0,
+      maxExp: 100,
+      locationId: 'loc_entrance',
+      inventory: [...selectedJob.startingItems],
+      jobId: selectedJob.id,
+      jobTitle: selectedJob.name
+    };
+
+    const newSession: StudentSession = {
+      studentId,
+      startedAt: new Date().toISOString(),
+      score: 0,
+      totalAttempts: 0,
+      correctCount: 0,
+      currentStageIndex: 1,
+      currentStepIndex: 0,
+      analogScore: 0,
+      analogTotal: 0,
+      digitalScore: 0,
+      digitalTotal: 0,
+      stats: initialStats,
+      clearedMonsters: [],
+      visitedLocations: ['loc_entrance']
+    };
+
+    setSession(newSession);
+    saveSession(newSession);
+    setPendingPlayerName(null);
+    soundFx.playConnectModem();
+
+    enqueueLines([
+      { type: 'narrative', text: '' },
+      { type: 'success', text: `✔ [신임 요원 등록 완료] ${studentId} 요원님, ${selectedJob.name} 직업으로 던전에 입장합니다!` },
+      { type: 'system', text: `▶ 초기 능력치: Lv.1 | 체력: ❤️ ${selectedJob.baseHp}/${selectedJob.baseHp} | 공격력: 🗡️ ${selectedJob.baseAttack} | 특성: [${selectedJob.perkName}]` },
+      { type: 'system', text: `▶ 기본 지급품: ${selectedJob.startingItems.join(', ')}` },
+      { type: 'system', text: `▶ 한글 명령어: '동', '서', '남', '북'으로 이동 / '봐라'로 주변 탐색 / '공격'으로 요괴 격파 / '공유'로 QR 생성` },
+      { type: 'narrative', text: '' }
+    ]);
+
+    printLookLocation('loc_entrance', newSession);
   };
 
   // Main Command Handler
@@ -500,6 +651,12 @@ export default function App() {
     addDirectLine('user', `COMMAND> ${cmd}`);
 
     const lowerCmd = cmd.toLowerCase();
+
+    // 0. If pending Job selection during registration
+    if (pendingPlayerName) {
+      applyJobToSession(cmd, pendingPlayerName);
+      return;
+    }
 
     // 1. If currently in Battle, route numbers/answers to battle handler
     if (activeBattleMonsterId) {
@@ -526,13 +683,15 @@ export default function App() {
               '• 동, 서, 남, 북  : 해당 방향의 장소로 이동',
               '• 봐라, 둘러보기  : 현재 위치의 지형, 출몰 몬스터, 학습 단서 확인',
               '• 공격, 싸우기    : 현재 방에 있는 데이터 요괴와 전투 시작',
-              '• 상태, 정보      : 레벨, 체력(HP), 공격력, 경험치(EXP), 위치 확인',
+              '• 상태, 정보      : 레벨, 직업, 체력(HP), 공격력, 경험치(EXP), 위치 확인',
               '• 가방, 인벤토리  : 소지한 아이템 및 보상 확인',
+              '• 직업, 전직      : 직업 목록 및 특성 확인',
+              '• 공유, QR, 링크  : [서버리스 공유] QR코드 및 웹 링크 복사창 열기',
+              '• 관리자, 에디터  : [그래픽 편집기] 맵, 몬스터, 직업, 아이템, 퀴즈 GUI 열기',
               '• 리포트, 결과    : 화이트해커 학습 진단서 터미널 출력',
               '• CSV, csv        : 학습 이력 데이터 CSV 파일 다운로드',
               '• JSON, json      : 학습 진단 JSON 데이터 클립보드 복사',
               '• 다운, JPG       : 명예 수사관 결과표 JPG 이미지 다운로드',
-              '• 관리자, admin   : [교사용 툴] 문제 및 퀴즈 편집 GUI 모달 열기',
               '• 리셋, 재시작    : 처음부터 게임 다시 시작'
             ]
           }
@@ -541,21 +700,61 @@ export default function App() {
       return;
     }
 
-    // 2. TEACHER ADMIN TOOL
-    if (cmd === '관리자' || lowerCmd === 'admin' || cmd === '교사') {
-      setIsAdminOpen(true);
+    // 2. SHARE / QR CODE & LINK MODAL
+    if (cmd === '공유' || lowerCmd === 'share' || cmd === 'qr' || lowerCmd === 'qr' || cmd === '링크' || cmd === '코드' || lowerCmd === 'code') {
+      setEditorInitialTab('share');
+      setIsEditorOpen(true);
       soundFx.playSuccess();
-      addDirectLine('system', '▶ [관리자] 교사용 문제 관리 툴 팝업을 열었습니다. (창에서 문제를 편집하세요)');
+      addDirectLine('system', '▶ [QR / 링크 공유] 백엔드리스 QR코드 및 공유 링크 생성 창을 열었습니다.');
       return;
     }
 
-    // 3. STATUS / 상태
+    // 3. GRAPHICAL WORLD EDITOR / 관리자 / 에디터
+    if (cmd === '관리자' || lowerCmd === 'admin' || cmd === '교사' || cmd === '에디터' || lowerCmd === 'editor' || cmd === '월드' || cmd === '편집') {
+      setEditorInitialTab('map');
+      setIsEditorOpen(true);
+      soundFx.playSuccess();
+      addDirectLine('system', '▶ [월드 편집기] 맵, 몬스터, 직업, 아이템, 퀴즈를 그래픽으로 수정하는 창을 열었습니다.');
+      return;
+    }
+
+    // 4. JOB LIST & SELECTION
+    if (cmd === '직업' || cmd === '전직' || lowerCmd === 'job' || lowerCmd === 'jobs') {
+      const jobs = Object.values(worldData.jobs || DEFAULT_CUSTOM_WORLD.jobs) as RPGJob[];
+      const jobLines = jobs.map(
+        (j, i) => `[${i + 1}] ${j.icon} ${j.name} (${j.title}) : HP ${j.baseHp} | ATK ${j.baseAttack} | 특성: ${j.perkName}`
+      );
+
+      enqueueLines([
+        {
+          type: 'box',
+          text: '',
+          instant: true,
+          boxData: {
+            title: '[데이터 수사관 직업 목록]',
+            badge: 'Jobs',
+            variant: 'status',
+            lines: [
+              session ? `현재 나의 직업: [${session.stats.jobTitle || '초급 수사관'}]` : '등록 가능한 직업군:',
+              '────────────────────────────────────────────────────────',
+              ...jobLines,
+              '────────────────────────────────────────────────────────',
+              '※ 월드 편집기(명령어: 관리자)에서 새로운 직업을 만들거나 스탯을 수정할 수 있습니다.'
+            ]
+          }
+        }
+      ]);
+      return;
+    }
+
+    // 5. STATUS / 상태
     if (cmd === '상태' || lowerCmd === 'status') {
       if (!session) {
         addDirectLine('error', '▶ 현재 등록된 요원 정보가 없습니다. 이름을 먼저 입력하세요.');
         return;
       }
-      const locName = RPG_LOCATIONS[session.stats.locationId]?.name || session.stats.locationId;
+      const loc = worldData.locations[session.stats.locationId] || DEFAULT_CUSTOM_WORLD.locations[session.stats.locationId];
+      const locName = loc?.name || session.stats.locationId;
       const totalAttempts = session.totalAttempts;
       const rate = totalAttempts > 0 ? Math.round((session.correctCount / totalAttempts) * 100) : 0;
       enqueueLines([
@@ -569,7 +768,7 @@ export default function App() {
             variant: 'status',
             lines: [
               `■ 요원 닉네임   : ${session.studentId}`,
-              `■ 캐릭터 레벨   : Lv.${session.stats.level}`,
+              `■ 담당 직업     : ${session.stats.jobTitle || '수사관'} (Lv.${session.stats.level})`,
               `■ 체력 (HP)      : ❤️ ${session.stats.hp} / ${session.stats.maxHp}`,
               `■ 공격력 (ATK)   : 🗡️ ${session.stats.attack}`,
               `■ 경험치 (EXP)   : 🌟 ${session.stats.exp} / ${session.stats.maxExp}`,
@@ -583,7 +782,7 @@ export default function App() {
       return;
     }
 
-    // 4. INVENTORY / 가방
+    // 6. INVENTORY / 가방
     if (cmd === '가방' || cmd === '인벤토리' || lowerCmd === 'inventory' || lowerCmd === 'bag') {
       if (!session) {
         addDirectLine('error', '▶ 요원 정보가 없습니다.');
@@ -608,7 +807,7 @@ export default function App() {
       return;
     }
 
-    // 5. LOOK / 봐라
+    // 7. LOOK / 봐라
     if (cmd === '봐라' || cmd === '둘러보기' || cmd === '살펴보기' || lowerCmd === 'look') {
       if (!session) {
         addDirectLine('error', '▶ 먼저 이름을 입력하여 로그인하세요.');
@@ -618,7 +817,7 @@ export default function App() {
       return;
     }
 
-    // 6. MOVEMENT: 동, 서, 남, 북
+    // 8. MOVEMENT: 동, 서, 남, 북
     if (cmd === '동' || cmd === '서' || cmd === '남' || cmd === '북' || cmd === '동쪽' || cmd === '서쪽' || cmd === '남쪽' || cmd === '북쪽') {
       if (!session) {
         addDirectLine('error', '▶ 먼저 이름을 입력하여 로그인하세요.');
@@ -626,7 +825,7 @@ export default function App() {
       }
 
       const dir = (cmd[0] as Direction);
-      const currentLoc = RPG_LOCATIONS[session.stats.locationId];
+      const currentLoc = worldData.locations[session.stats.locationId] || DEFAULT_CUSTOM_WORLD.locations[session.stats.locationId];
       const nextLocId = currentLoc?.exits[dir];
 
       if (!nextLocId) {
@@ -657,19 +856,19 @@ export default function App() {
       return;
     }
 
-    // 7. ATTACK / 공격
+    // 9. ATTACK / 공격
     if (cmd === '공격' || cmd.startsWith('공격 ') || cmd === '싸우기' || lowerCmd === 'attack') {
       if (!session) {
         addDirectLine('error', '▶ 요원 이름을 먼저 등록하세요.');
         return;
       }
-      const currentLoc = RPG_LOCATIONS[session.stats.locationId];
+      const currentLoc = worldData.locations[session.stats.locationId] || DEFAULT_CUSTOM_WORLD.locations[session.stats.locationId];
       if (!currentLoc?.monsterId) {
         addDirectLine('system', '▶ 이곳에는 공격할 요괴가 없습니다. 평화로운 지역입니다.');
         return;
       }
       const monsterId = currentLoc.monsterId;
-      const monster = monsters[monsterId];
+      const monster = monsters[monsterId] || worldData.monsters[monsterId];
       if (session.clearedMonsters.includes(monsterId) || monster?.defeated) {
         addDirectLine('success', '▶ 이곳의 요괴는 이미 처치되었습니다!');
         return;
@@ -678,7 +877,7 @@ export default function App() {
       return;
     }
 
-    // 8. REPORT / 리포트
+    // 10. REPORT / 리포트
     if (cmd === '리포트' || cmd === '결과' || cmd === '진단서' || lowerCmd === 'report') {
       if (!session) {
         addDirectLine('error', '▶ 세션 정보가 없습니다. 먼저 게임을 진행해 주세요.');
@@ -701,20 +900,22 @@ export default function App() {
       if (accuracy < 70) grade = 'B급 (수습 데이터 수사관)';
       else if (accuracy < 85) grade = 'A급 (정예 데이터 수사관)';
 
+      const totalMonstersCount = Object.keys(worldData.monsters).length;
+
       enqueueLines([
         {
           type: 'box',
           text: '',
           instant: true,
           boxData: {
-            title: '[화이트해커 요원 학습 진단서]',
+            title: `[${worldData.title} 요원 학습 진단서]`,
             badge: 'Report',
             variant: 'report',
             lines: [
-              `■ 요원 식별자   : ${session.studentId} (Lv.${session.stats.level})`,
+              `■ 요원 식별자   : ${session.studentId} (${session.stats.jobTitle || '수사관'} / Lv.${session.stats.level})`,
               `■ 수사관 등급   : ${grade}`,
               `■ 최종 능력치   : ❤️ 체력 ${session.stats.hp}/${session.stats.maxHp} | 🗡️ 공격력 ${session.stats.attack} | 🌟 EXP ${session.stats.exp}`,
-              `■ 던전 정복률   : 4개 중 ${session.clearedMonsters.length}마리 처치 완료`,
+              `■ 던전 정복률   : ${totalMonstersCount}개 중 ${session.clearedMonsters.length}마리 처치 완료`,
               `■ 정답률 / 시도 : ${accuracy}% (${totalAttempts}회 시도 중 ${session.correctCount}회 정답)`,
               '────────────────────────────────────────────────────────',
               '■ [개념별 역량 분석표]',
@@ -730,13 +931,13 @@ export default function App() {
             ]
           }
         },
-        { type: 'prompt', text: '▶ [데이터 내보내기] \'CSV\' (엑셀 파일 다운), \'JSON\' (클립보드 복사), \'다운\' (JPG 이미지)' }
+        { type: 'prompt', text: '▶ [데이터 내보내기] \'공유\' (QR코드 생성), \'CSV\' (엑셀 파일 다운), \'JSON\' (클립보드 복사), \'다운\' (JPG 이미지)' }
       ]);
       soundFx.playLevelUp();
       return;
     }
 
-    // 9. CSV DOWNLOAD
+    // 11. CSV DOWNLOAD
     if (cmd === 'CSV' || lowerCmd === 'csv') {
       if (!session) {
         addDirectLine('error', '▶ 저장할 학습 데이터가 없습니다.');
@@ -752,7 +953,7 @@ export default function App() {
       return;
     }
 
-    // 10. JSON CLIPBOARD COPY
+    // 12. JSON CLIPBOARD COPY
     if (cmd === 'JSON' || lowerCmd === 'json') {
       if (!session) {
         addDirectLine('error', '▶ 복사할 학습 데이터가 없습니다.');
@@ -768,7 +969,7 @@ export default function App() {
       return;
     }
 
-    // 11. JPG IMAGE DOWNLOAD
+    // 13. JPG IMAGE DOWNLOAD
     if (cmd === '다운' || cmd === '다운로드' || lowerCmd === 'down' || lowerCmd === 'jpg') {
       if (!session) {
         addDirectLine('error', '▶ 다운로드할 요원 정보가 없습니다.');
@@ -785,7 +986,7 @@ export default function App() {
       return;
     }
 
-    // 12. RESET / 리셋
+    // 14. RESET / 리셋
     if (cmd === '리셋' || cmd === '재시작' || lowerCmd === 'restart' || lowerCmd === 'reset') {
       if (session) {
         clearStudentLogs(session.studentId);
@@ -793,11 +994,11 @@ export default function App() {
       lineQueueRef.current = [];
       isStreamingRef.current = false;
       setSession(null);
-      setCurrentStepIndex(0);
+      setPendingPlayerName(null);
       setIsCompleted(false);
       setAttemptCounts({});
       setActiveBattleMonsterId(null);
-      setMonsters(INITIAL_RPG_MONSTERS);
+      setMonsters(worldData.monsters);
       setLines([]);
       ASCII_TITLE.forEach(l => addDirectLine('ascii', l));
       addDirectLine('system', '▶ 데이터 던전 시스템이 초기화되었습니다.');
@@ -819,49 +1020,22 @@ export default function App() {
         return;
       }
 
-      // Fresh Login & RPG Init
+      // Start player registration -> Job Selection prompt
       const studentId = cmd.replace(/\s+/g, '_');
-      const initialStats: RPGStats = {
-        level: 1,
-        hp: 100,
-        maxHp: 100,
-        attack: 15,
-        exp: 0,
-        maxExp: 100,
-        locationId: 'loc_entrance',
-        inventory: ['초급 수사관 배지', '비트 분석 돋보기']
-      };
+      setPendingPlayerName(studentId);
 
-      const newSession: StudentSession = {
-        studentId,
-        startedAt: new Date().toISOString(),
-        score: 0,
-        totalAttempts: 0,
-        correctCount: 0,
-        currentStageIndex: 1,
-        currentStepIndex: 0,
-        analogScore: 0,
-        analogTotal: 0,
-        digitalScore: 0,
-        digitalTotal: 0,
-        stats: initialStats,
-        clearedMonsters: [],
-        visitedLocations: ['loc_entrance']
-      };
-
-      setSession(newSession);
-      saveSession(newSession);
-      soundFx.playConnectModem();
+      const jobList = Object.values(worldData.jobs || DEFAULT_CUSTOM_WORLD.jobs) as RPGJob[];
+      const jobChoices = jobList.map(
+        (j, i) => ` [${i + 1}] ${j.icon} ${j.name} : HP ${j.baseHp} | ATK ${j.baseAttack} | 특성: ${j.perkName}`
+      );
 
       enqueueLines([
         { type: 'narrative', text: '' },
-        { type: 'success', text: `✔ [신임 요원 등록 완료] ${studentId} 요원님, 데이터 던전에 오신 것을 환영합니다!` },
-        { type: 'system', text: `▶ 초기 능력치: Lv.1 | 체력: ❤️ 100/100 | 공격력: 🗡️ 15 | 경험치: 🌟 0/100` },
-        { type: 'system', text: `▶ 한글 명령어: '동', '서', '남', '북'으로 이동 / '봐라'로 주변 탐색 / '공격'으로 요괴 격파` },
-        { type: 'narrative', text: '' }
+        { type: 'success', text: `▶ 요원명 [${studentId}] 확인! 직업군을 선택해 주세요:` },
+        ...jobChoices.map(jc => ({ type: 'system' as const, text: jc })),
+        { type: 'narrative', text: '' },
+        { type: 'prompt', text: '▶ 직업 번호(1~4) 또는 직업 이름을 입력하세요 (기본값: 1번 화이트해커):' }
       ]);
-
-      printLookLocation('loc_entrance', newSession);
       return;
     }
 
@@ -870,35 +1044,54 @@ export default function App() {
     addDirectLine('help', `❓ 알 수 없는 명령어입니다: '${cmd}' (명령어 목록을 보려면 '도움말' 또는 '봐라'를 입력하세요)`);
   };
 
-  const handleSaveCustomSteps = (newSteps: GameStep[]) => {
-    saveCustomGameSteps(newSteps);
-    setGameSteps(newSteps);
-    addDirectLine('success', `✔ [관리자] 교사용 문제 ${newSteps.length}개가 적용되었습니다.`);
+  const handleSaveWorld = (newWorld: CustomWorldData) => {
+    saveCustomWorld(newWorld);
+    setWorldData(newWorld);
+    setMonsters(newWorld.monsters);
+    addDirectLine('box', '', true, {
+      title: '✔ [월드 데이터 저장 및 즉시 적용 완료]',
+      badge: 'Updated',
+      variant: 'status',
+      lines: [
+        `월드명 : ${newWorld.title} (ver ${newWorld.version})`,
+        `• 맵 장소     : ${Object.keys(newWorld.locations).length}곳`,
+        `• 몬스터     : ${Object.keys(newWorld.monsters).length}마리`,
+        `• 직업/아이템 : ${Object.keys(newWorld.jobs || {}).length}직업 / ${Object.keys(newWorld.items || {}).length}아이템`,
+        `• 학습 퀴즈   : ${newWorld.gameSteps?.length || 0}문제`,
+        '────────────────────────────────────────────────────────',
+        '▶ \'공유\' 명령어를 입력하여 친구/학생들에게 QR코드 및 링크를 배포하세요!'
+      ]
+    });
   };
 
-  const handleResetStepsToDefault = () => {
-    const defaults = resetGameStepsToDefault();
-    setGameSteps(defaults);
-    addDirectLine('system', '▶ [관리자] 기본 6개 교과서 문제로 초기화되었습니다.');
+  const handleResetWorldToDefault = () => {
+    const defaults = resetCustomWorldToDefault();
+    setWorldData(defaults);
+    setMonsters(defaults.monsters);
+    addDirectLine('system', '▶ [월드 초기화] 기본 데이터 던전 맵/몬스터/직업/문제로 초기화되었습니다.');
   };
 
   const handleKeyPressSound = () => {
     soundFx.playKeyClick();
   };
 
-  const promptPrefix = session ? `[${session.studentId}@데이터던전]$ ` : `[미등록_요원@MUD]$ `;
+  const promptPrefix = session ? `[${session.studentId}@데이터던전]$ ` : pendingPlayerName ? `[직업선택@MUD]$ ` : `[미등록_요원@MUD]$ `;
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-black text-white select-none">
       {/* 100% Retro CLI Status Header Bar */}
       <TerminalHeader
         session={session}
-        currentStepIndex={currentStepIndex}
-        totalSteps={gameSteps.length}
+        currentStepIndex={0}
+        totalSteps={worldData.gameSteps?.length || 6}
         theme={theme}
         soundEnabled={soundEnabled}
         crtEnabled={crtEnabled}
-        onOpenAdmin={() => setIsAdminOpen(true)}
+        worldTitle={worldData.title}
+        onOpenAdmin={(tab) => {
+          setEditorInitialTab(tab || 'map');
+          setIsEditorOpen(true);
+        }}
       />
 
       {/* Terminal Screen Stream & Command Prompt */}
@@ -910,17 +1103,19 @@ export default function App() {
         onKeyPressSound={handleKeyPressSound}
         promptPrefix={promptPrefix}
         isCompleted={isCompleted}
-        isAdminOpen={isAdminOpen}
+        isAdminOpen={isEditorOpen}
       />
 
-      {/* Teacher Admin Graphic GUI Modal */}
-      <TeacherAdminModal
-        isOpen={isAdminOpen}
-        onClose={() => setIsAdminOpen(false)}
-        gameSteps={gameSteps}
-        onSave={handleSaveCustomSteps}
-        onResetToDefault={handleResetStepsToDefault}
+      {/* Serverless QR Sharing & World/Monster/Job/Quiz GUI Editor */}
+      <WorldEditorModal
+        isOpen={isEditorOpen}
+        onClose={() => setIsEditorOpen(false)}
+        worldData={worldData}
+        onSaveWorld={handleSaveWorld}
+        onResetToDefault={handleResetWorldToDefault}
+        initialTab={editorInitialTab}
       />
     </div>
   );
 }
+

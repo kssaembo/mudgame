@@ -1,9 +1,12 @@
+import LZString from 'lz-string';
 import { DEFAULT_GAME_STEPS } from './gameData';
-import { GameStep, LearningLogEntry, StudentSession } from './types';
+import { DEFAULT_CUSTOM_WORLD } from './rpgData';
+import { CustomWorldData, GameStep, LearningLogEntry, StudentSession } from './types';
 
 const LOG_STORAGE_PREFIX = 'mud_data_learning_logs_';
 const SESSION_STORAGE_KEY = 'mud_data_current_session';
 const CUSTOM_STEPS_STORAGE_KEY = 'mud_custom_game_steps';
+const CUSTOM_WORLD_STORAGE_KEY = 'mud_custom_world_data';
 
 export function saveLogEntry(entry: LearningLogEntry): void {
   try {
@@ -51,6 +54,134 @@ export function clearStudentLogs(studentId: string): void {
     localStorage.removeItem(SESSION_STORAGE_KEY);
   } catch (err) {
     console.error('Failed to clear logs:', err);
+  }
+}
+
+// --------------------------------------------------------------------
+// Custom World (Map + Monsters + Jobs + Items + Quizzes) Persistence
+// --------------------------------------------------------------------
+export function loadCustomWorld(): CustomWorldData {
+  try {
+    const raw = localStorage.getItem(CUSTOM_WORLD_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.locations && parsed.monsters) {
+        return {
+          ...DEFAULT_CUSTOM_WORLD,
+          ...parsed,
+          locations: { ...DEFAULT_CUSTOM_WORLD.locations, ...parsed.locations },
+          monsters: { ...DEFAULT_CUSTOM_WORLD.monsters, ...parsed.monsters },
+          jobs: { ...DEFAULT_CUSTOM_WORLD.jobs, ...(parsed.jobs || {}) },
+          items: { ...DEFAULT_CUSTOM_WORLD.items, ...(parsed.items || {}) },
+          gameSteps: Array.isArray(parsed.gameSteps) && parsed.gameSteps.length > 0 ? parsed.gameSteps : DEFAULT_GAME_STEPS
+        };
+      }
+    }
+  } catch (err) {
+    console.error('Failed to load custom world:', err);
+  }
+  return DEFAULT_CUSTOM_WORLD;
+}
+
+export function saveCustomWorld(world: CustomWorldData): void {
+  try {
+    localStorage.setItem(CUSTOM_WORLD_STORAGE_KEY, JSON.stringify(world));
+  } catch (err) {
+    console.error('Failed to save custom world:', err);
+  }
+}
+
+export function resetCustomWorldToDefault(): CustomWorldData {
+  try {
+    localStorage.removeItem(CUSTOM_WORLD_STORAGE_KEY);
+    localStorage.removeItem(CUSTOM_STEPS_STORAGE_KEY);
+  } catch (err) {
+    console.error('Failed to reset custom world:', err);
+  }
+  return DEFAULT_CUSTOM_WORLD;
+}
+
+// --------------------------------------------------------------------
+// Serverless Compression & QR / Link Generation
+// --------------------------------------------------------------------
+export function encodeWorldData(world: CustomWorldData): string {
+  try {
+    const jsonStr = JSON.stringify(world);
+    return LZString.compressToEncodedURIComponent(jsonStr);
+  } catch (err) {
+    console.error('Failed to compress world data:', err);
+    return '';
+  }
+}
+
+export function decodeWorldData(compressedStr: string): CustomWorldData | null {
+  try {
+    const decompressed = LZString.decompressFromEncodedURIComponent(compressedStr);
+    if (!decompressed) return null;
+    const parsed = JSON.parse(decompressed) as CustomWorldData;
+    if (parsed && parsed.locations && parsed.monsters) {
+      return {
+        ...DEFAULT_CUSTOM_WORLD,
+        ...parsed,
+        locations: parsed.locations,
+        monsters: parsed.monsters,
+        jobs: parsed.jobs || DEFAULT_CUSTOM_WORLD.jobs,
+        items: parsed.items || DEFAULT_CUSTOM_WORLD.items,
+        gameSteps: parsed.gameSteps || DEFAULT_GAME_STEPS
+      };
+    }
+    return null;
+  } catch (err) {
+    console.error('Failed to decompress world data:', err);
+    return null;
+  }
+}
+
+export function generateWorldShareUrl(world: CustomWorldData): string {
+  const code = encodeWorldData(world);
+  if (!code) return window.location.href;
+  const baseUrl = window.location.origin + window.location.pathname;
+  return `${baseUrl}#world=${code}`;
+}
+
+export function exportWorldAsJsonFile(world: CustomWorldData): boolean {
+  try {
+    const jsonStr = JSON.stringify(world, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const safeTitle = world.title.replace(/[^a-zA-Z0-9가-힣_-]/g, '_') || 'custom_dungeon_world';
+    link.setAttribute('href', url);
+    link.setAttribute('download', `${safeTitle}.json`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    return true;
+  } catch (err) {
+    console.error('Failed to export world JSON:', err);
+    return false;
+  }
+}
+
+export function parseWorldFromJson(jsonStr: string): CustomWorldData | null {
+  try {
+    const parsed = JSON.parse(jsonStr);
+    if (parsed && parsed.locations && parsed.monsters) {
+      return {
+        ...DEFAULT_CUSTOM_WORLD,
+        ...parsed,
+        locations: parsed.locations,
+        monsters: parsed.monsters,
+        jobs: parsed.jobs || DEFAULT_CUSTOM_WORLD.jobs,
+        items: parsed.items || DEFAULT_CUSTOM_WORLD.items,
+        gameSteps: parsed.gameSteps || DEFAULT_GAME_STEPS
+      };
+    }
+    return null;
+  } catch (err) {
+    console.error('Failed to parse world JSON:', err);
+    return null;
   }
 }
 
@@ -145,7 +276,7 @@ export async function copyJsonReport(session: StudentSession): Promise<{ success
 }
 
 // --------------------------------------------------------------------
-// Custom Game Steps (Teacher Tool)
+// Custom Game Steps (Legacy Compatibility)
 // --------------------------------------------------------------------
 export function loadGameSteps(): GameStep[] {
   try {
@@ -262,7 +393,7 @@ export function downloadResultJpg(
       ctx.fillStyle = '#e0ffe8';
       ctx.font = '22px monospace, sans-serif';
       ctx.textAlign = 'left';
-      ctx.fillText(`수사관 성명 : ${session.studentId} (Lv.${session.stats.level} | 🗡️ ATK ${session.stats.attack})`, 110, 320);
+      ctx.fillText(`수사관 성명 : ${session.studentId} (${session.stats.jobTitle || '수사관'} | Lv.${session.stats.level} | 🗡️ ATK ${session.stats.attack})`, 110, 320);
       ctx.fillText(`수사관 등급 : ${grade}`, 110, 360);
       ctx.fillText(`임명 일자   : ${new Date().toLocaleDateString('ko-KR')} ${new Date().toLocaleTimeString('ko-KR')}`, 110, 400);
 
@@ -290,9 +421,8 @@ export function downloadResultJpg(
       ctx.textAlign = 'left';
       ctx.fillText('■ 수사 및 RPG 전투 종합 성적', 70, 620);
 
-      const maxScore = totalStepsCount * 20;
       const scoreRows = [
-        `• 최종 레벨 / 능력치 : Lv.${session.stats.level} (체력: ${session.stats.hp}/${session.stats.maxHp} | 공격력: ${session.stats.attack} | EXP: ${session.stats.exp}/${session.stats.maxExp})`,
+        `• 직업 / 능력치     : ${session.stats.jobTitle || '수사관'} (Lv.${session.stats.level} | HP: ${session.stats.hp}/${session.stats.maxHp} | ATK: ${session.stats.attack})`,
         `• 처치한 데이터 요괴 : ${session.clearedMonsters.length}마리 완료`,
         `• 획득 아이템 목록   : ${session.stats.inventory.length > 0 ? session.stats.inventory.join(', ') : '없음'}`,
         `• 문제 정답률 / 시도 : ${accuracy}% (${totalAttempts}회 시도 중 ${session.correctCount}회 정답)`
@@ -387,3 +517,4 @@ export function downloadResultJpg(
     }
   });
 }
+
