@@ -1,0 +1,6 @@
+{
+  "name": "데이터 탐정 MUD: 아날로그 vs 디지털",
+  "description": "90년대 PC통신 및 MS-DOS 스타일의 초등 6학년 실과 데이터(아날로그 vs 디지털) CLI 학습 텍스트 머드 게임",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
