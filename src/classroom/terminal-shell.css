@@ -11,3 +11,20 @@
 @media(max-width:700px){.classroom.student-shell{height:100dvh}.student-shell .ps-title{padding:7px 10px}.student-shell .ps-title small{font-size:9px}.cli-hint{padding:7px 10px 0;font-size:10px}.cli-tools{padding:7px 10px;gap:8px;flex-wrap:wrap}.cli-menu{flex-basis:100%;gap:3px 9px}.classroom.student-shell .cli-menu button{font-size:10px}.cli-balance{font-size:12px}.student-shell .ps-top{padding:8px 10px;gap:6px}.student-shell .ps-top>div:first-child{max-width:38%;min-width:0}.student-shell .ps-top strong{font-size:12px;overflow-wrap:anywhere}.student-shell .ps-top p{font-size:9px}.compass-area{max-width:60%;width:320px}.classroom.student-shell .compass-place,.classroom.student-shell .cli-compass strong{font-size:9px}.compass-middle{grid-template-columns:minmax(0,1fr) 8px minmax(32px,1fr) 8px minmax(0,1fr);gap:1px}.cli-compass{font-size:10px;grid-template-rows:auto 12px auto 12px auto}.mud-modal{width:calc(100vw - 16px);max-height:calc(100dvh - 16px)}.modal-heading{padding:12px}.modal-heading h2{font-size:15px}.modal-heading button{font-size:10px}.modal-body{padding:12px}.student-shell .modal-body .two-col{grid-template-columns:1fr}.cli-help{font-size:11px}}
 .classroom.student-shell .compass-place{gap:3px;white-space:nowrap}.compass-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}.compass-place>span:last-child{flex-shrink:0}.compass-북,.compass-남{max-width:65%!important}.classroom.student-shell .cli-compass strong{white-space:nowrap}
 .classroom.student-shell .powershell .compass-place,.classroom.student-shell .powershell .ps-footer button{border:0}.classroom.student-shell .powershell input::placeholder{color:var(--cli-muted)}.classroom.student-shell .ps-location-description{border-color:var(--cli-line)}
+/* Terminal readability and output clearance. Event labels remain readable without color. */
+.student-shell .ps-output{overflow-anchor:none;scroll-padding-bottom:90px}
+.ps-output-content{min-width:0}.ps-output-clearance{height:90px;pointer-events:none}
+.ps-event{display:block}.event-command{color:var(--cli-muted)}
+.ps-event.event-monster{color:#ffb783;font-weight:700}.ps-event.event-danger{color:#ffadb6;font-weight:700}
+.ps-event.event-heal{color:#9cf0ba}.ps-event.event-reward{color:#ffe28b;font-weight:700}
+.ps-event.event-npc{color:#c8b6ff}.ps-event.event-book{color:#93ddf5}
+.student-shell .ps-stats{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:8px;font-size:14px}
+.ps-stats span{white-space:nowrap;color:var(--cli-muted)}.ps-stats b{font-size:20px;color:var(--cli-fg)}
+.ps-stats .stat-low,.ps-stats .stat-low b{color:#ffadb6}.student-shell .cli-balance{font-size:20px}
+.classroom.student-shell .cli-theme button{padding:6px 8px;font-size:11px;white-space:nowrap}
+.classroom.student-shell .cli-theme button[aria-selected=true]{background:var(--cli-accent);color:var(--cli-bg);font-weight:700;border-color:var(--cli-accent)}
+.classroom.student-shell .cli-compass strong{white-space:normal;line-height:1.5}
+.student-shell .ps-top>div:first-child{flex:1;min-width:0}.student-shell .compass-area{width:480px}
+.student-shell .ps-bag{max-height:240px;overflow:auto;overscroll-behavior:contain}
+@media(max-width:900px){.cli-tools{flex-wrap:wrap}.cli-menu{flex-basis:100%}}
+@media(max-width:700px){.student-shell .ps-top{flex-wrap:wrap}.student-shell .ps-top>div:first-child{max-width:100%;flex-basis:100%}.student-shell .ps-stats{font-size:11px;gap:3px 12px;margin-top:3px}.ps-stats b{font-size:16px}.student-shell .cli-balance{font-size:16px}.student-shell .compass-area{width:100%;max-width:100%}.classroom.student-shell .cli-compass strong,.classroom.student-shell .compass-place{font-size:10px}.student-shell .ps-bag{max-height:180px}.ps-output-clearance{height:70px}}

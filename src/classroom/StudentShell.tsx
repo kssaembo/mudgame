@@ -19,10 +19,10 @@ export default function StudentShell({data,run,preview,busy,error,notice,onLeave
  const messages=<>{error&&<div role="alert" className="alert">{error}</div>}{notice&&<div role="status" className="notice">{notice}</div>}{busy&&<div role="status">처리 중…</div>}</>;
  return <div className={`classroom student-shell theme-${theme}`}>
  <fieldset className="student-workspace" disabled={busy||leaving}>
- <Adventure data={data} run={run} preview={preview} onAppCommand={command} messages={!panel?messages:null} toolbar={<>
+ <Adventure data={data} run={run} busy={busy||leaving} panelOpen={!!panel} preview={preview} onAppCommand={command} messages={!panel?messages:null} toolbar={<>
   <div className="cli-hint">입력창에 명령어 라고 입력해 보세요. 활용 가능한 명령어를 볼 수 있습니다.</div>
   <div className="cli-tools"><div className="cli-menu">{[['commands','명령어 모음'],['questions','문제만들기'],['proposals','창작 작업실'],['wallet','창조력,성장'],['logout','나가기']].map(([id,label])=><button key={id} onClick={()=>{setLeaveError('');setPanel(id);}}>[{label}]</button>)}</div>
-  <label className="cli-theme">화면 색상<select aria-label="화면 색상" value={theme} onChange={e=>changeTheme(e.target.value)}><option value="blue">파란 배경</option><option value="green">초록 배경</option><option value="black">검정 배경</option></select></label>
+  <div className="cli-theme" role="tablist" aria-label="화면 색상">{[['green','초록'],['black','검정'],['blue','파란']].map(([value,label],index)=><button key={value} role="tab" aria-selected={theme===value} tabIndex={theme===value?0:-1} onClick={()=>changeTheme(value)} onKeyDown={e=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();const next=e.key==='Home'?0:e.key==='End'?2:(index+(e.key==='ArrowRight'?1:2))%3;changeTheme(['green','black','blue'][next]);(e.currentTarget.parentElement?.children[next] as HTMLElement)?.focus();}}>{label} 배경</button>)}</div>
   <strong className="cli-balance">창조력 {data.profile.balance-data.profile.reserved}<small>예약 {data.profile.reserved}</small></strong></div>
  </>}/></fieldset>
  {panel&&<Modal title={titles[panel]} busy={busy||leaving} onClose={()=>setPanel('')}>

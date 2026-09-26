@@ -17,8 +17,9 @@ export function creationPayload(kind:string,d:Record<string,any>) {
 }
 export default function CreationWorkshop({data,run,teacher}:{data:Snapshot;run:Run;teacher:boolean}) {
  const [kind,setKind]=useState('map'),[name,setName]=useState('');
- const [draft,setDraft]=useState<Record<string,any>>({count:1,category:'forest',anchor:data.places.find(p=>!p.village_id&&p.active)?.id||'',direction:'동',village_id:'',description:'',hp:40,attack:8,defense:1,level:1,min_correct:2,place:'',subject:'',slot:'weapon',effect:'none',power:0});
- const [feedback,setFeedback]=useState(''),[bonus,setBonus]=useState<Record<string,number>>({}),[filter,setFilter]=useState('pending');
+ const currentPlace=data.places.find(p=>p.id===data.profile.location&&p.active);
+ const [draft,setDraft]=useState<Record<string,any>>({count:1,category:'forest',anchor:currentPlace?.village_id||currentPlace?.id||data.places.find(p=>!p.village_id&&p.active)?.id||'',direction:'동',village_id:'',description:'',hp:40,attack:8,defense:1,level:1,min_correct:2,place:'',subject:'',slot:'weapon',effect:'none',power:0});
+ const [feedback,setFeedback]=useState(''),[bonus,setBonus]=useState<Record<string,string>>({}),[filter,setFilter]=useState('pending');
  const change=(key:string,value:any)=>setDraft(d=>({...d,[key]:value}));
  const chooseKind=(value:string)=>{
    setKind(value);
@@ -28,7 +29,7 @@ export default function CreationWorkshop({data,run,teacher}:{data:Snapshot;run:R
  const villages=data.places.filter(p=>p.creator===data.profile.id&&p.category==='village'&&p.active);
  const occupied=(id:string)=>data.places.some(p=>p.village_id===id&&p.active)||data.proposals.some(p=>p.kind==='map'&&p.status==='pending'&&p.data.village_id===id);
  const payload=creationPayload(kind,draft),cost=estimate(kind,payload,data.settings);
- const review=(id:string,action:string)=>run(()=>rpc('review_proposal',{p_id:id,p_action:action,p_feedback:feedback,p_bonus:action==='approved'?(bonus[id]||0):0}),action==='approved'?'창작 승인과 추가 보상을 반영했습니다.':'신청 상태를 변경하고 예약액을 해제했습니다.');
+ const review=(id:string,action:string)=>run(()=>{const amount=action==='approved'?Number(bonus[id]||0):0;if(!Number.isInteger(amount)||amount<0||amount>100)throw new Error('추가 창조력은 0~100 사이의 정수로 입력해 주세요.');return rpc('review_proposal',{p_id:id,p_action:action,p_feedback:feedback,p_bonus:amount});},action==='approved'?'창작 승인과 추가 보상을 반영했습니다.':'신청 상태를 변경하고 예약액을 해제했습니다.');
  const rows=data.proposals.filter(p=>!teacher||filter==='all'||p.status===filter);
  return <div className={teacher?'':'two-col form-columns'}>
  {!teacher&&<section className="card"><h2>우리 세계에 무엇을 더할까요?</h2><p>필요한 창조력은 수치에 따라 계산됩니다. 승인 전에는 예약만 해요.</p>
@@ -52,7 +53,7 @@ export default function CreationWorkshop({data,run,teacher}:{data:Snapshot;run:R
  {teacher&&<><div className="toolbar"><select aria-label="창작 검토 상태" value={filter} onChange={e=>setFilter(e.target.value)}>{['pending','approved','revision','rejected','all'].map(s=><option value={s} key={s}>{labels[s]||'전체'}</option>)}</select></div><label>검토 의견<input value={feedback} onChange={e=>setFeedback(e.target.value)} placeholder="좋았던 점 또는 수정할 내용"/></label></>}
  {rows.length===0&&<div className="empty">이 상태의 창작물이 없습니다.</div>}
  {rows.map(p=><article className="list-card" key={p.id}><div className="row-between"><span>{labels[p.kind]} · {teacher?(data.students.find(s=>s.id===p.author)?.nickname||'학생'):'내 창작'}</span><span className={`tag ${p.status}`}>{labels[p.status]}</span></div><h3>{p.name}</h3><p className="creation-description">{p.data.description}</p><div className="chips">{p.kind==='map'?<><span>{p.data.count}칸 · {categories[p.data.category]}</span><span>{p.data.village_id?`연계 마을: ${data.places.find(l=>l.id===p.data.village_id)?.name||'확인 필요'}`:`${data.places.find(l=>l.id===p.data.anchor)?.name||'시작점'} → ${p.data.direction}`}</span></>:['item','monster','skill'].includes(p.kind)?<><span>ATK {p.data.attack||0} / DEF {p.data.defense||0} / HP {p.data.hp||0}</span><span>{labels[p.data.effect]||'효과 없음'} {p.data.power||0}</span></>:<span>{p.kind==='npc'?'제작자의 마을에서 등장':'모든 도서관에 배치'}</span>}<span>예약 비용 {p.cost}</span></div>{p.feedback&&<p className="feedback">{p.feedback}</p>}
- {p.status==='pending'&&<>{teacher&&<label>우수 창작 추가 창조력<input type="number" min={0} max={100} value={bonus[p.id]||0} onChange={e=>setBonus({...bonus,[p.id]:Number(e.target.value)})}/><small>승인 시 별도 지급 · 같은 창작물에 한 번만 지급</small></label>}<div className="actions">{teacher?<><button className="primary" onClick={()=>review(p.id,'approved')}>승인 및 생성{bonus[p.id]?` · 추가 +${bonus[p.id]}`:''}</button><button onClick={()=>review(p.id,'revision')}>수정 요청</button><button onClick={()=>review(p.id,'rejected')}>반려</button></>:<button onClick={()=>review(p.id,'cancelled')}>취소 · 예약 해제</button>}</div></>}
+ {p.status==='pending'&&<>{teacher&&<label>우수 창작 추가 창조력<input type="number" min={0} max={100} value={bonus[p.id]??'0'} onChange={e=>setBonus({...bonus,[p.id]:e.target.value})}/><small>승인 시 별도 지급 · 같은 창작물에 한 번만 지급</small></label>}<div className="actions">{teacher?<><button className="primary" onClick={()=>review(p.id,'approved')}>승인 및 생성{Number(bonus[p.id])>0?` · 추가 +${bonus[p.id]}`:''}</button><button onClick={()=>review(p.id,'revision')}>수정 요청</button><button onClick={()=>review(p.id,'rejected')}>반려</button></>:<button onClick={()=>review(p.id,'cancelled')}>취소 · 예약 해제</button>}</div></>}
  {!teacher&&['revision','rejected','cancelled'].includes(p.status)&&<button onClick={()=>{setKind(p.kind);setName(p.name);setDraft({...draft,...p.data});}}>내용을 복사해 다시 만들기</button>}
  </article>)}</section></div>;
 }
