@@ -4,8 +4,11 @@ import { rpc, snapshot, studentAccess, supabase } from './api';
 import { categories, defaults, estimate, labels, previewSnapshot, validateQuestion, type Question, type Settings, type Snapshot } from './model';
 import Proposals from './CreationWorkshop';
 import Adventure from './AdventureTerminal';
+import StudentShell from './StudentShell';
+import StudentManagement from './StudentManagement';
 import './classroom.css';
 import './adventure.css';
+import './terminal-shell.css';
 
 type Run = (action:()=>Promise<unknown>,message?:string)=>Promise<void>;
 const status=(s:string)=><span className={`tag ${s}`}>{labels[s]||s}</span>;
@@ -20,6 +23,8 @@ export default function ClassroomApp() {
  useEffect(()=>{if(!supabase)return;setBusy(true);refresh().catch(e=>setError(e.message)).finally(()=>setBusy(false));const {data:listener}=supabase.auth.onAuthStateChange(event=>{if(event==='SIGNED_OUT')setData(null);});return()=>listener.subscription.unsubscribe();},[]);
  useEffect(()=>{if(!data||preview)return;const check=()=>{if(document.visibilityState==='visible')refresh().catch(e=>{setData(null);setError(e.message);});};window.addEventListener('focus',check);return()=>window.removeEventListener('focus',check);},[data?.profile.id,preview]);
  const teacher=data?.profile.role==='teacher';
+ const leave=async()=>{if(!preview){const result=await supabase?.auth.signOut();if(result?.error)throw result.error;}setPreview(false);setData(null);setTab('home');setError('');setNotice('');};
+ if(data&&!teacher)return <StudentShell data={data} run={run} preview={preview} busy={busy} error={error} notice={notice} onLeave={leave} renderPanel={panel=>panel==='questions'?<Questions data={data} run={run}/>:panel==='proposals'?<Proposals data={data} run={run} teacher={false}/>:<Wallet data={data} run={run}/>}/>;
  const menus=teacher?[['home','교실 현황',Compass],['students','학생 관리',Users],['questions','문제 검토',BookOpen],['proposals','창작 검토',Hammer],['world','세계 관리',Map],['settings','운영 설정',SettingsIcon]]:[['home','세계 탐험',Compass],['questions','문제 만들기',BookOpen],['proposals','창작 작업실',Hammer],['wallet','창조력 · 성장',Sparkles]];
  return <div className="classroom">
  <aside className="rail"><div className="brand"><img className="brand-icon" src="/mud-icon.png" alt="책과 성 모양의 우리 반 MUD 아이콘"/><div>우리 반 MUD<small>LEARN · CREATE · EXPLORE</small></div></div>
@@ -56,7 +61,7 @@ function Login({run,onPreview}:{run:Run;onPreview:(r:'teacher'|'student')=>void}
 
 function Dashboard({data,go}:{data:Snapshot;go:(t:string)=>void}) {
  const metrics=[['가입 승인 대기',data.students.filter(s=>s.status==='pending').length,'students'],['문제 검토 대기',data.questions.filter(q=>q.status==='submitted').length,'questions'],['창작 승인 대기',data.proposals.filter(p=>p.status==='pending').length,'proposals'],['우리 세계의 장소',data.places.filter(p=>p.active).length,'world']];
- return <><div className="metrics">{metrics.map(([label,n,tab])=><button className="card metric" key={label} onClick={()=>go(String(tab))}><span>{label}</span><strong>{n}<small>개</small></strong><span className="metric-link">살펴보기 →</span></button>)}</div><div className="two-col"><section className="card"><h2>오늘의 검토함</h2><p>질문이 새로운 모험의 시작이 됩니다.</p>{data.questions.filter(q=>q.status==='submitted').slice(0,4).map(q=><button className="review-row" key={q.id} onClick={()=>go('questions')}><span className="subject-icon">{q.subject[0]}</span><div><strong>{q.body}</strong><small>{data.students.find(s=>s.id===q.author)?.nickname||(q.author?"학생":"기본 문제")} · {q.subject} · {labels[q.kind]}</small></div><ChevronRight size={17}/></button>)}{!data.questions.some(q=>q.status==='submitted')&&<Empty>검토할 문제가 없습니다.</Empty>}</section><section className="card"><h2>세계가 자라고 있어요</h2><MiniMap data={data}/><p>맵 한 칸 {data.settings.room_cost} · 문제 승인 {data.settings.question_reward} 창조력</p><button className="secondary" onClick={()=>go('world')}>전체 세계 관리</button></section></div></>;
+ return <><div className="metrics">{metrics.map(([label,n,tab])=><button className="card metric" key={label} onClick={()=>go(String(tab))}><span>{label}</span><strong>{n}<small>개</small></strong><span className="metric-link">살펴보기 →</span></button>)}</div><div className="dashboard-stack"><section className="card"><h2>오늘의 검토함</h2><p>질문이 새로운 모험의 시작이 됩니다.</p>{data.questions.filter(q=>q.status==='submitted').slice(0,4).map(q=><button className="review-row" key={q.id} onClick={()=>go('questions')}><span className="subject-icon">{q.subject[0]}</span><div><strong>{q.body}</strong><small>{data.students.find(s=>s.id===q.author)?.nickname||(q.author?"학생":"기본 문제")} · {q.subject} · {labels[q.kind]}</small></div><ChevronRight size={17}/></button>)}{!data.questions.some(q=>q.status==='submitted')&&<Empty>검토할 문제가 없습니다.</Empty>}</section><section className="card"><h2>세계가 자라고 있어요</h2><MiniMap data={data}/><p>맵 한 칸 {data.settings.room_cost} · 문제 승인 {data.settings.question_reward} 창조력</p><button className="secondary" onClick={()=>go('world')}>전체 세계 관리</button></section></div></>;
 }
 
 function Questions({data,run}:{data:Snapshot;run:Run}) {
@@ -88,14 +93,7 @@ function ReviewQuestions({data,run}:{data:Snapshot;run:Run}) {
  {q.status==='submitted'&&<div className="actions"><button className="primary" onClick={()=>review([q.id],'approved')}>승인 + 창조력 지급</button><button onClick={()=>review([q.id],'revision')}>수정 요청</button><button onClick={()=>review([q.id],'rejected')}>반려</button></div>}{q.status==='approved'&&<button onClick={()=>run(()=>rpc('set_active',{p_kind:'question',p_ids:[q.id],p_active:false}),'출제를 중지했습니다. 기존 보상은 유지됩니다.')}>출제 중지</button>}</article>)}</div></>;
 }
 
-function Students({data,run}:{data:Snapshot;run:Run}) {
- const [selected,setSelected]=useState<string[]>([]),[student,setStudent]=useState(''),[amount,setAmount]=useState(10),[reason,setReason]=useState(''),[pin,setPin]=useState('');
- return <><div className="approval-bar"><span>{selected.length}명 선택</span><div className="actions"><button onClick={()=>setSelected(data.students.filter(s=>s.role==='student'&&s.status==='pending').map(s=>s.id))}>대기 학생 선택</button><button className="primary" disabled={!selected.length} onClick={()=>run(()=>rpc('manage_students',{p_ids:selected,p_status:'approved'}),'가입을 승인했습니다.')}>선택 가입 승인</button><button disabled={!selected.length} onClick={()=>run(()=>rpc('manage_students',{p_ids:selected,p_status:'suspended'}),'선택 학생의 이용을 중지했습니다.')}>이용 중지</button></div></div>
- <div className="card table-wrap"><table><thead><tr><th>선택</th><th>닉네임</th><th>상태</th><th>사용 가능</th><th>예약</th><th>레벨</th><th>관리</th></tr></thead><tbody>{data.students.filter(s=>s.role==='student').map(s=><tr key={s.id}><td><Check id={s.id} selected={selected} set={setSelected}/></td><td>{s.nickname}</td><td>{status(s.status)}</td><td>{s.balance-s.reserved}</td><td>{s.reserved}</td><td>{s.level}</td><td><button onClick={()=>setStudent(s.id)}>선택</button></td></tr>)}</tbody></table></div>
- {student&&<section className="card"><h2>{data.students.find(s=>s.id===student)?.nickname} 관리</h2><div className="two-col"><form onSubmit={e=>{e.preventDefault();run(()=>rpc('adjust_balance',{p_student:student,p_amount:amount,p_reason:reason,p_request:crypto.randomUUID()}));}}><label>창조력 조정 <small>차감은 음수 입력</small><input type="number" min={-10000} max={10000} value={amount} onChange={e=>setAmount(Number(e.target.value))}/></label><label>사유<input required minLength={2} value={reason} onChange={e=>setReason(e.target.value)}/></label><button className="primary">내역을 남기고 조정</button></form><form onSubmit={e=>{e.preventDefault();run(async()=>{await studentAccess('reset','',pin,student);setPin('');},'새 PIN으로 변경했습니다.');}}><label>새 PIN<input type="password" required pattern="[0-9]{6}" maxLength={6} value={pin} onChange={e=>setPin(e.target.value)}/></label><p>기존 PIN은 조회하지 않습니다.</p><button>PIN 초기화</button></form></div></section>}
- <section className="card"><h2>최근 창조력 내역</h2><LedgerList data={data}/></section></>;
-}
-
+function Students({data,run}:{data:Snapshot;run:Run}) {return <><StudentManagement data={data} run={run}/><section className="card"><h2>최근 창조력 내역</h2><LedgerList data={data}/></section></>;}
 function MiniMap({data,onSelect}:{data:Snapshot;onSelect?:(id:string)=>void}) {
  const mapPlaces=data.places.filter(p=>!p.village_id);
  const xs=mapPlaces.map(p=>p.x),ys=mapPlaces.map(p=>p.y),minX=Math.min(0,...xs),minY=Math.min(0,...ys);
