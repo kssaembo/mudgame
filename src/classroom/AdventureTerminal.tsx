@@ -1,3 +1,4 @@
+import {manaCost} from './enhancement';
 import {useEffect,useRef,useState,type ReactNode} from 'react';
 import {Maximize2,Minimize2} from 'lucide-react';
 import {enhancedData} from './enhancement';
@@ -26,12 +27,15 @@ export const help=`명령어 안내
   장착 1 / 해제 1     가방 번호의 장비 착용 / 해제
   사용 1              가방 번호의 회복 소모품 사용 (전투 밖)
   사용 / 접기         사용할 아이템 번호 선택 / 가방 닫기
-  회복                광장·주택·치유소에서 체력 회복
+  회복                최대 체력·마력 20% 무료 회복 (공통 3분)
+  전체회복            창조력 2로 체력·마력 모두 회복
   상태 / 도움말       능력치 / 명령어 안내
 
 전투 중 정답은 문제 아래 입력하거나 명령줄에 그대로 입력하세요.
 책·NPC의 아이템/기술은 각각 하루 한 번 추첨, 독서·대화별 하루 10회까지 추첨합니다.
 기술은 제작 승인만으로 습득되지 않습니다. 레벨 3 이상 몬스터·독서·대화로 발견하세요.
+기술은 마력을 사용합니다. 기본 공격은 마력이 들지 않습니다.
+전투 밖에서 매분 체력 2%, 마력 5%가 회복됩니다. 접속하지 않은 시간도 포함합니다.
 책 창조력은 같은 책 하루 한 번 추첨, 탐험 창조력은 교사가 정한 하루 한도를 따릅니다.`;
 
 function eventClass(text:string) {
@@ -83,21 +87,22 @@ export default function AdventureTerminal({data,run,busy=false,panelOpen=false,p
    if(result.status==='won')write(`[승리] ${monster?.name||'몬스터'} 처치! EXP +${result.exp}\n창조력 +${result.creativity||0}${result.loot?`\n[전리품] ${result.loot} → 가방에 보관`:''}${result.levels?`\n[LEVEL UP] ${result.levels}레벨 상승! 체력 회복 · 능력치 증가`:''}`);
    if(result.status==='lost')write('[구조] 광장으로 돌아왔습니다. 체력을 회복했으니 다시 도전하세요.');
    if(result.stones)write(`[전리품] 강화의 돌 +${result.stones}개 · 가방에서 확인하세요.`);
+   if(result.mana_spent)write(`[마력] -${result.mana_spent}`);
    if(result.skill)write(`[기술 습득] ${result.skill} · 기술 명령어로 확인하세요.`);
  });
  const act=(raw:string)=>{
    let cmd=raw.trim();if(!cmd||busy||panelOpen)return;
    write(`PS C:\\우리반\\${loc?.name||'광장'}> ${cmd}`);setHistory(h=>[...h.slice(-80),cmd]);setHistoryIndex(-1);
    if(onAppCommand?.(cmd))return;
-   if(cmd==='기술'){write(learned.length?'[습득한 기술]\n'+learned.map(e=>`${e.name} · ${labels[e.data.effect]} +${e.data.power}\n${e.data.description||''}`).join('\n\n'):'[기술] 아직 습득한 기술이 없습니다. 레벨 3 이상 몬스터를 이기거나 책·NPC를 만나 보세요.');return;}
+   if(cmd==='기술'){write(learned.length?'[습득한 기술]\n'+learned.map(e=>`${e.name} · ${labels[e.data.effect]} +${e.data.power} · 마력 ${manaCost(e.data)}\n${e.data.description||''}`).join('\n\n'):'[기술] 아직 습득한 기술이 없습니다. 레벨 3 이상 몬스터를 이기거나 책·NPC를 만나 보세요.');return;}
    if(['도움말','help','?'].includes(cmd)){write(help);return;}
    if(['가방','bag','인벤토리'].includes(cmd)){setShowBag(true);write(`[가방] ${inventory.length}개 보유 · 소지 제한 없음${inventory.length?'':'\n몬스터 전리품과 보물상자에서 아이템을 얻어 보세요.'}`);return;}
    if(cmd==='접기'){setShowBag(false);setChoosingItem(false);write('[가방] 닫았습니다.');return;}
    if(cmd==='사용'){setShowBag(true);setChoosingItem(inventory.length>0);write(inventory.length?'[가방] 사용할 아이템 번호를 입력하세요. 예: 1 또는 사용 1\n취소하려면 접기를 입력하세요.':'[가방] 사용할 아이템이 없습니다.');return;}
    if(choosingItem&&/^\d+$/.test(cmd))cmd=`사용 ${cmd}`;
    if(cmd.startsWith('사용 '))setChoosingItem(false);
-   if(cmd==='상태'){write(`Lv.${data.profile.level} · EXP ${data.profile.exp}/100\nHP ${data.profile.hp}/${effective.max_hp} · ATK ${effective.attack} · DEF ${effective.defense}\n사용 가능한 창조력 ${data.profile.balance-data.profile.reserved}`);return;}
-   if(battle&&!['후퇴','공격'].includes(cmd)&&!['동','서','남','북','회복','대화','읽기','열기','입장','퇴장','봐라'].includes(cmd)&&!cmd.startsWith('장착 ')&&!cmd.startsWith('해제 ')&&!cmd.startsWith('사용 ')){submitAnswer(cmd);return;}
+   if(cmd==='상태'){write(`Lv.${data.profile.level} · EXP ${data.profile.exp}/100\nHP ${data.profile.hp}/${effective.max_hp} · MP ${data.profile.mana??30}/30 · ATK ${effective.attack} · DEF ${effective.defense}\n사용 가능한 창조력 ${data.profile.balance-data.profile.reserved}`);return;}
+   if(battle&&!['후퇴','공격'].includes(cmd)&&!['동','서','남','북','회복','전체회복','대화','읽기','열기','입장','퇴장','봐라'].includes(cmd)&&!cmd.startsWith('장착 ')&&!cmd.startsWith('해제 ')&&!cmd.startsWith('사용 ')){submitAnswer(cmd);return;}
    const itemAction=cmd.match(/^(장착|해제|사용)\s+(\d+)$/);
    execute(async()=>{
      if(itemAction){const item=inventory[Number(itemAction[2])-1];if(!item)throw new Error('가방에서 아이템 번호를 확인해 주세요.');
@@ -105,7 +110,8 @@ export default function AdventureTerminal({data,run,busy=false,panelOpen=false,p
        else {await rpc('equipment',{p_item:item.id,p_equip:itemAction[1]==='장착'});write(`${item.name} ${itemAction[1]} 완료.`);}return;}
      if(cmd==='공격'){const b=await rpc('start_battle');write(`[전투] ${data.entities.find(e=>e.id===b.monster)?.name||'몬스터'}${b.level?` (Lv.${b.level})`:''} 발견! 문제를 풀어 행동하세요.`);}
      else if(cmd==='후퇴'){await rpc('escape');write('[후퇴] 전투에서 물러났습니다.');}
-     else if(['동','서','남','북','봐라','회복','대화','읽기','열기','입장','퇴장'].includes(cmd)) {const r=await rpc('explore',{p_command:cmd==='퇴장'?'나가기':cmd,p_request:crypto.randomUUID()});write(r.text.replaceAll('「나가기」','「퇴장」').replace('몬스터가 나타났습니다',`${data.entities.find(e=>e.id===r.battle?.monster)?.name||'몬스터'}${r.battle?.level?` (Lv.${r.battle.level})`:''} 등장`));}
+     else if(cmd==='전체회복'&&!window.confirm('창조력 2를 사용해 체력과 마력을 모두 회복할까요?'))return;
+     else if(['동','서','남','북','봐라','회복','전체회복','대화','읽기','열기','입장','퇴장'].includes(cmd)) {const r=await rpc('explore',{p_command:cmd==='퇴장'?'나가기':cmd,p_request:crypto.randomUUID()});write(r.text.replaceAll('「나가기」','「퇴장」').replace('몬스터가 나타났습니다',`${data.entities.find(e=>e.id===r.battle?.monster)?.name||'몬스터'}${r.battle?.level?` (Lv.${r.battle.level})`:''} 등장`));}
      else throw new Error('알 수 없는 명령입니다. 도움말을 입력하세요.');
    });
  };
@@ -114,7 +120,7 @@ export default function AdventureTerminal({data,run,busy=false,panelOpen=false,p
  return <section ref={terminal} className={`powershell ${full?'ps-fullscreen':''}`} aria-label="세계 탐험 터미널">
  <div className="ps-title"><div><span className="ps-symbol">›_</span> 우리 반 MUD <small>{data.profile.nickname} · {preview?'미리보기':'온라인 탐험'}</small></div><button aria-label={full?'전체화면 종료':'터미널 전체화면'} onClick={toggleFull}>{full?<Minimize2 size={16}/>:<Maximize2 size={16}/>} {full?'창 모드':'전체화면'}</button></div>
  {toolbar}
- <div className="ps-top"><div><strong>{loc?.name||'배움의 광장'}</strong><div className="ps-stats" aria-label="내 능력치"><span>레벨 <b>{data.profile.level}</b></span><span className={data.profile.hp<=effective.max_hp*.3?'stat-low':''}>체력 <b>{data.profile.hp}/{effective.max_hp}</b></span><span>공격 <b>{effective.attack}</b></span><span>방어 <b>{effective.defense}</b></span><span>EXP <b>{data.profile.exp}/100</b></span></div></div>
+ <div className="ps-top"><div><strong>{loc?.name||'배움의 광장'}</strong><div className="ps-stats" aria-label="내 능력치"><span>레벨 <b>{data.profile.level}</b></span><span className={data.profile.hp<=effective.max_hp*.3?'stat-low':''}>체력 <b>{data.profile.hp}/{effective.max_hp}</b></span><span>마력 <b>{data.profile.mana??30}/30</b></span><span>공격 <b>{effective.attack}</b></span><span>방어 <b>{effective.defense}</b></span><span>EXP <b>{data.profile.exp}/100</b></span></div></div>
  <div className="compass-area"><div className="cli-compass" aria-label="현재 위치와 동서남북 지도">
  {direction('북')}<span className="compass-up">↑</span><div className="compass-middle">{direction('서')}<span>←</span><strong title={loc?.name}>현 위치 ({loc?.name||'배움의 광장'})</strong><span>→</span>{direction('동')}</div><span className="compass-down">↓</span>{direction('남')}
  </div>{data.places.filter(p=>p.village_id===loc?.id&&p.active).map(p=><div className="compass-building" key={p.id}>입장 → {p.name}</div>)}{loc?.village_id&&<div className="compass-building">퇴장 → {data.places.find(p=>p.id===loc.village_id)?.name}</div>}</div></div>
@@ -122,7 +128,7 @@ export default function AdventureTerminal({data,run,busy=false,panelOpen=false,p
  {showBag&&<div className="ps-bag"><div className="row-between"><strong>┌─ 가방 · {inventory.length}개 / 제한 없음 ─┐</strong><button onClick={()=>act('접기')}>접기</button></div><p>[재료] 강화의 돌 {data.profile.enhancement_stones||0}개 · 강화 전용, 판매 불가</p>{inventory.length===0?<p>아직 아이템이 없습니다.</p>:inventory.map((i,n)=><div className="ps-inventory-row" key={i.id}><div><b>[{n+1}] {i.name}{i.enhancement?` +${i.enhancement}`:''} {i.equipped?'[장착 중]':''}</b><small>{labels[i.slot]} · 공격 {i.data.attack||0} / 방어 {i.data.defense||0} / 체력 {i.data.hp||0} · {labels[i.data.effect]||'효과 없음'} {i.data.power||0}</small>{i.data.prerequisites?.length>0&&<small>선행: {requirementsText(i.data,data)} {hasPrerequisites(i.data,data)?'✓':'미충족'}</small>}{i.data.obtain_target&&<small>지정 획득품 · 판매·소모 후 재획득 불가</small>}</div><button disabled={!!battle} onClick={()=>act(`${i.slot==='consumable'?'사용':i.equipped?'해제':'장착'} ${n+1}`)}>{i.slot==='consumable'?'사용':i.equipped?'해제':'장착'}</button></div>)}<p>공격·방어 소모품은 전투에서 선택하세요. 장착 한도: 무기·방어구·장신구 각 1개. 같은 아이템은 하나만 장착할 수 있습니다.</p></div>}
  {battle&&<div className="ps-battle"><div className="row-between"><strong>⚔ {monster?.name||'몬스터'} · Lv.{battle.level||monster?.data.level||1}</strong><span>HP {battle.hp} · 정답 {battle.correct_count}회</span></div><small>{battle.question.subject} · {labels[battle.question.kind]}{battle.repeated?' · 준비된 문제를 모두 풀어 복습합니다.':''}</small><h3>{battle.question.body}</h3>
  <form onSubmit={e=>{e.preventDefault();submitAnswer(answer);}}>{battle.question.kind==='short'?<input aria-label="단답형 정답" required value={answer} onChange={e=>setAnswer(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&e.nativeEvent.isComposing)e.preventDefault();}} placeholder="정답 입력"/>:<div className="battle-choices">{(battle.question.kind==='ox'?['O','X']:battle.question.options).map((o,i)=>{const value=battle.question.kind==='ox'?o:String(i+1);return <label key={i}><input type="radio" name="battle-answer" required checked={answer===value} onChange={()=>setAnswer(value)}/>{battle.question.kind==='choice'?`${i+1}. `:''}{o}</label>;})}</div>}
- <div className="ps-battle-actions"><select aria-label="전투 아이템 또는 기술" value={effect} onChange={e=>setEffect(e.target.value)}><option value="">기본 공격</option>{inventory.filter(i=>hasPrerequisites(i.data,data)&&(i.slot==='consumable'||(i.equipped&&i.data.effect!=='none'))).map(i=><option key={i.id} value={i.id}>{i.name} · {i.slot==='consumable'?'소모품':'장비 효과'}</option>)}{learned.map(e=><option key={e.id} value={e.id}>{e.name} · {labels[e.data.effect]} +{e.data.power}</option>)}</select><button type="submit">정답 제출 · 행동 실행</button><button type="button" onClick={()=>act('후퇴')}>후퇴</button></div></form></div>}
+ <div className="ps-battle-actions"><select aria-label="전투 아이템 또는 기술" value={effect} onChange={e=>setEffect(e.target.value)}><option value="">기본 공격</option>{inventory.filter(i=>hasPrerequisites(i.data,data)&&(i.slot==='consumable'||(i.equipped&&i.data.effect!=='none'))).map(i=><option key={i.id} value={i.id}>{i.name} · {i.slot==='consumable'?'소모품':'장비 효과'}</option>)}{learned.map(e=><option key={e.id} value={e.id} disabled={(data.profile.mana??30)<manaCost(e.data)}>{e.name} · {labels[e.data.effect]} +{e.data.power} · 마력 {manaCost(e.data)}</option>)}</select><button type="submit">정답 제출 · 행동 실행</button><button type="button" onClick={()=>act('후퇴')}>후퇴</button></div></form></div>}
  <div className="ps-output-clearance" aria-hidden="true"/></div></div>
  <form className="ps-command" onSubmit={e=>{e.preventDefault();act(command);setCommand('');input.current?.focus();}}><label htmlFor="mud-command">PS C:\우리반&gt;</label><input id="mud-command" ref={input} autoComplete="off" spellCheck={false} value={command} onChange={e=>setCommand(e.target.value)} placeholder={battle?'정답 또는 후퇴':'명령어를 입력하세요'} onKeyDown={e=>{if(e.key==='Enter'&&e.nativeEvent.isComposing){e.preventDefault();return;}if(e.key==='ArrowUp'){e.preventDefault();const i=historyIndex<0?history.length-1:Math.max(0,historyIndex-1);setHistoryIndex(i);setCommand(history[i]||'');}if(e.key==='ArrowDown'){e.preventDefault();const i=historyIndex+1;if(i>=history.length){setHistoryIndex(-1);setCommand('');}else {setHistoryIndex(i);setCommand(history[i]||'');}}}}/><button type="submit">입력 ↵</button></form>
  <div className="ps-footer"><button onClick={()=>act('도움말')}>도움말</button><button onClick={()=>act('가방')}>가방</button><span>↑ ↓ 명령 기록　{full?'Esc 창 모드':'텍스트를 눌러 즉시 표시'}</span></div>

@@ -1,11 +1,12 @@
-import {useState,type ReactNode} from 'react';
+import {useEffect,useState,type ReactNode} from 'react';
 import Adventure,{help} from './AdventureTerminal';
 import Modal from './Modal';
 import type {Snapshot} from './model';
 
 type Run=(action:()=>Promise<unknown>,message?:string)=>Promise<void>;
-export default function StudentShell({data,run,preview,busy,error,notice,onLeave,renderPanel}:{data:Snapshot;run:Run;preview:boolean;busy:boolean;error:string;notice:string;onLeave:()=>Promise<void>;renderPanel:(panel:string)=>ReactNode}) {
+export default function StudentShell({data,run,preview,busy,error,notice,onLeave,renderPanel,onPanelChange}:{data:Snapshot;run:Run;preview:boolean;busy:boolean;error:string;notice:string;onLeave:()=>Promise<void>;renderPanel:(panel:string)=>ReactNode;onPanelChange?:(panel:string)=>void}) {
  const [panel,setPanel]=useState(''),[leaving,setLeaving]=useState(false),[leaveError,setLeaveError]=useState('');
+ useEffect(()=>{onPanelChange?.(panel);},[panel]);
  const [theme,setTheme]=useState(()=>{const saved=localStorage.getItem('mud_terminal_theme');return ['blue','green','black'].includes(saved||'')?saved!:'blue';});
  const changeTheme=(value:string)=>{setTheme(value);localStorage.setItem('mud_terminal_theme',value);};
  const command=(raw:string)=>{

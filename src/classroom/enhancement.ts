@@ -9,6 +9,8 @@ export function enhancedData(base:Record<string,any>,level=0):Record<string,any>
  for(const key of ['attack','defense','hp','power']){const v=Number(base[key]||0);result[key]=v+(v>0?Math.floor(v*n*5/100):0);}
  return result;
 }
+export function manaCost(d:Record<string,any>){return Math.min(20,Math.max(4,Math.ceil(Math.max(0,Number(d.power||0))/3)+2));}
 export function buyback(entity:Entity,students:Profile[]) {
- return students.some(p=>p.id===entity.creator&&p.role==='student')?Math.floor(entity.creation_cost*.5):(entity.data.slot||'consumable')==='consumable'?1:2;
+ if(students.some(p=>p.id===entity.creator&&p.role==='student'))return Math.floor(entity.creation_cost*.8);
+ const d=entity.data;return Math.min(20,((d.slot||'consumable')==='consumable'?1:2)+Math.floor((Math.max(0,Number(d.attack||0))*2+Math.max(0,Number(d.defense||0))*2+Math.max(0,Number(d.hp||0))/5+Math.max(0,Number(d.power||0)))/10));
 }

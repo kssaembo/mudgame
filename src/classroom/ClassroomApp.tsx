@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useState, useRef, type FormEvent, type ReactNode } from 'react';
 import { BookOpen, Compass, Hammer, ShieldCheck, Sparkles, Users, LogOut, RefreshCw, Map, Settings as SettingsIcon, ChevronRight } from 'lucide-react';
 import { rpc, snapshot, studentAccess, supabase } from './api';
 import { categories, defaults, estimate, labels, previewSnapshot, validateQuestion, type Question, type Settings, type Snapshot } from './model';
@@ -21,14 +21,18 @@ function Empty({children}:{children:ReactNode}) {return <div className="empty">{
 
 export default function ClassroomApp() {
  const [data,setData]=useState<Snapshot|null>(null),[preview,setPreview]=useState(false),[busy,setBusy]=useState(false),[notice,setNotice]=useState(''),[error,setError]=useState(''),[tab,setTab]=useState('home');
- async function refresh(){const next=await snapshot();setData(next);}
+ const [panel,setPanel]=useState('');const scope=useRef('home');scope.current=data?.profile.role==='teacher'?tab:(panel||'home');
+ const version=useRef(0);
+ async function refresh(){const id=++version.current;const next=await snapshot(scope.current);if(id===version.current)setData(next);}
+ useEffect(()=>{if(!data||preview)return;setBusy(true);refresh().catch(e=>setError(e.message)).finally(()=>setBusy(false));},[tab,panel]);
+ useEffect(()=>{if(!data||preview||data.profile.role!=='student')return;const timer=setInterval(()=>{if(document.visibilityState!=='visible'||busy)return;const requestVersion=version.current;rpc('vitals').then(v=>setData(d=>requestVersion===version.current&&d&&d.profile.id===data.profile.id?{...d,profile:{...d.profile,...v}}:d)).catch(()=>{});},60000);return()=>clearInterval(timer);},[data?.profile.id,preview,busy]);
  const run:Run=async(action,message='저장했습니다.')=>{if(preview){setNotice('화면 미리보기입니다. 실제 저장과 승인은 Supabase 연결 후 사용할 수 있습니다.');return;}setBusy(true);setError('');setNotice('');try{await action();await refresh();setNotice(message);}catch(e){setError((e as Error).message||'처리하지 못했습니다.');}finally{setBusy(false);}};
- useEffect(()=>{if(!supabase)return;setBusy(true);refresh().catch(e=>setError(e.message)).finally(()=>setBusy(false));const {data:listener}=supabase.auth.onAuthStateChange(event=>{if(event==='SIGNED_OUT'){setData(null);setNotice('');setError('');setTab('home');}});return()=>listener.subscription.unsubscribe();},[]);
+ useEffect(()=>{if(!supabase)return;setBusy(true);refresh().catch(e=>setError(e.message)).finally(()=>setBusy(false));const {data:listener}=supabase.auth.onAuthStateChange(event=>{if(event==='SIGNED_OUT'){++version.current;setPanel('');setData(null);setNotice('');setError('');setTab('home');}});return()=>listener.subscription.unsubscribe();},[]);
  useEffect(()=>{if(!data||preview)return;const check=()=>{if(document.visibilityState==='visible')refresh().catch(e=>{setData(null);setError(e.message);});};window.addEventListener('focus',check);return()=>window.removeEventListener('focus',check);},[data?.profile.id,preview]);
  const teacher=data?.profile.role==='teacher';
- const counts=data?reviewCounts(data):{};
+ const counts=data?(data.review_counts||reviewCounts(data)):{};
  const leave=async()=>{if(!preview){const result=await supabase?.auth.signOut();if(result?.error)throw result.error;}setPreview(false);setData(null);setTab('home');setError('');setNotice('');};
- if(data&&!teacher)return <StudentShell data={data} run={run} preview={preview} busy={busy} error={error} notice={notice} onLeave={leave} renderPanel={panel=>panel==='enhance'?<Enhancements data={data} run={run}/>:panel==='shops'?<Shops data={data} run={run} teacher={false}/>:panel==='questions'?<Questions data={data} run={run}/>:panel==='proposals'?<Proposals data={data} run={run} teacher={false}/>:<Wallet data={data} run={run}/>}/>;
+ if(data&&!teacher)return <StudentShell onPanelChange={setPanel} data={data} run={run} preview={preview} busy={busy} error={error} notice={notice} onLeave={leave} renderPanel={panel=>panel==='enhance'?<Enhancements data={data} run={run}/>:panel==='shops'?<Shops data={data} run={run} teacher={false}/>:panel==='questions'?<Questions data={data} run={run}/>:panel==='proposals'?<Proposals data={data} run={run} teacher={false}/>:<Wallet data={data} run={run}/>}/>;
  const menus=teacher?[['home','교실 현황',Compass],['students','학생 관리',Users],['questions','문제 검토',BookOpen],['proposals','창작 검토',Hammer],['world','세계 관리',Map],['settings','운영 설정',SettingsIcon]]:[['home','세계 탐험',Compass],['questions','문제 만들기',BookOpen],['proposals','창작 작업실',Hammer],['wallet','창조력 · 성장',Sparkles]];
  return <div className="classroom">
  <aside className="rail"><div className="brand"><img className="brand-icon" src="/mud-icon.png" alt="책과 성 모양의 우리 반 MUD 아이콘"/><div>우리 반 MUD<small>LEARN · CREATE · EXPLORE</small></div></div>
