@@ -1,0 +1,36 @@
+import {useState} from 'react';
+import {rpc} from './api';
+import {categories,labels,type Snapshot,type Shop} from './model';
+import {hasPrerequisites,requirementsText} from './creationRules';
+type Run=(action:()=>Promise<unknown>,message?:string)=>Promise<void>;
+type CatalogRow={entity:string;price:string;stock:string};
+type Trade={shop:string;action:'buy'|'sell';entity:string|null;item:string|null;price:number;name:string;targeted:boolean;request:string};
+export default function Shops({data,run,teacher}:{data:Snapshot;run:Run;teacher:boolean}) {
+ const [editId,setEditId]=useState(()=>crypto.randomUUID()),[name,setName]=useState(''),[place,setPlace]=useState(data.places.find(p=>p.active)?.id||'');
+ const [kind,setKind]=useState('shop'),[active,setActive]=useState(true),[catalog,setCatalog]=useState<CatalogRow[]>([]),[search,setSearch]=useState('');
+ const [shopId,setShopId]=useState(''),[trade,setTrade]=useState<Trade|null>(null);
+ const visible=data.shops.filter(s=>teacher||(s.active&&s.place===data.profile.location));
+ const current=visible.find(s=>s.id===shopId)||visible[0];
+ const entities=data.entities.filter(e=>e.active&&['item','skill'].includes(e.kind));
+ const edit=(s?:Shop)=>{setEditId(s?.id||crypto.randomUUID());setName(s?.name||'');setPlace(s?.place||data.places.find(p=>p.active)?.id||'');setKind(s?.kind||'shop');setActive(s?.active??true);setCatalog(s?data.shop_products.filter(p=>p.shop===s.id).map(p=>({entity:p.entity,price:String(p.price),stock:p.stock===null?'':String(p.stock)})):[]);};
+ const change=(id:string,key:'price'|'stock',value:string)=>setCatalog(rows=>rows.map(r=>r.entity===id?{...r,[key]:value}:r));
+ if(teacher)return <div className="shop-admin"><section className="card"><div className="row-between"><h2>교사 상점·상인</h2><button onClick={()=>edit()}>새 상점 만들기</button></div><p>판매 품목과 가격·재고를 상점마다 지정합니다. 학생끼리 거래하지 않으며, 판매된 물건은 상점 재고에 자동 추가되지 않습니다.</p>{visible.map(s=><button className="secondary" key={s.id} onClick={()=>edit(s)}>{s.name} · {data.places.find(p=>p.id===s.place)?.name} · {s.active?'운영 중':'중지'}</button>)}</section>
+ <section className="card"><h2>{data.shops.some(s=>s.id===editId)?'상점 수정':'새 상점'}</h2><form onSubmit={event=>{event.preventDefault();run(async()=>{
+ const rows=catalog.map(r=>({entity:r.entity,price:Number(r.price),stock:r.stock===''?null:Number(r.stock)}));
+ if(rows.some(r=>!Number.isInteger(r.price)||r.price<1||(r.stock!==null&&(!Number.isInteger(r.stock)||r.stock<0))))throw new Error('가격은 양의 정수, 재고는 0 이상의 정수로 입력해 주세요.');
+ await rpc('save_shop',{p_id:editId,p_name:name,p_place:place,p_kind:kind,p_active:active,p_catalog:rows});
+ },'상점 설정을 저장했습니다.');}}>
+ <div className="form-row"><label>이름<input required maxLength={60} value={name} onChange={e=>setName(e.target.value)}/></label><label>형태<select value={kind} onChange={e=>setKind(e.target.value)}><option value="shop">상점</option><option value="merchant">상인</option></select></label><label>개설 지역<select aria-label="상점 개설 지역" value={place} onChange={e=>setPlace(e.target.value)}>{data.places.filter(p=>p.active).map(p=><option key={p.id} value={p.id}>{p.name} · {categories[p.category]}</option>)}</select></label></div>
+ <label className="toggle"><input type="checkbox" checked={active} onChange={e=>setActive(e.target.checked)}/>운영 중</label>
+ <p>학생은 골드로 구매합니다. 기본 구매가는 제작 창조력과 같은 숫자, 매입가는 제작비의 80% 내림입니다. 가격을 매입가보다 낮게 설정할 수 없습니다. 재고를 비우면 무제한입니다.</p>
+ <label>품목 찾기<input value={search} onChange={e=>setSearch(e.target.value)} placeholder="이름으로 검색"/></label>
+ <div className="shop-catalog">{entities.filter(e=>e.name.includes(search)).map(e=>{const row=catalog.find(r=>r.entity===e.id);return <article className="list-card" key={e.id}><label className="toggle"><input aria-label={`${e.name} 판매`} type="checkbox" checked={!!row} onChange={event=>setCatalog(rows=>event.target.checked?[...rows,{entity:e.id,price:String(Math.max(1,e.creation_cost)),stock:''}]:rows.filter(r=>r.entity!==e.id))}/>{e.name} · {labels[e.kind]}</label><small>제작비 {e.creation_cost} · 매입가 {Math.floor(e.creation_cost*.8)}{e.data.obtain_target?' · 계정당 평생 1회 지정 획득품':''}</small>{row&&<div className="form-row"><label>구매가 (골드)<input type="number" required min={Math.max(1,Math.floor(e.creation_cost*.8))} max={100000} value={row.price} onChange={v=>change(e.id,'price',v.target.value)}/></label><label>재고 (빈칸=무제한)<input type="number" min={0} max={100000} value={row.stock} onChange={v=>change(e.id,'stock',v.target.value)}/></label></div>}</article>;})}</div>
+ <button className="primary">상점 저장 · {catalog.length}개 품목</button></form></section></div>;
+ const confirm=(value:Omit<Trade,'shop'|'request'>)=>{if(current)setTrade({...value,shop:current.id,request:crypto.randomUUID()});};
+ return <div className="student-shops"><p>보유 골드 <strong>{data.profile.gold}</strong> · 창조력과 별개의 거래 화폐입니다.</p>{data.battle?<p>전투를 마치거나 후퇴한 뒤 거래하세요.</p>:!current?<p>현재 장소에는 열린 상점·상인이 없습니다. 다른 마을이나 장소를 찾아보세요.</p>:<>
+ <label>현재 장소의 상점<select aria-label="이용할 상점" value={current.id} onChange={e=>{setShopId(e.target.value);setTrade(null);}}>{visible.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
+ {trade&&<section className="list-card trade-confirm" role="alertdialog" aria-label="거래 확인"><h3>{trade.name} {trade.action==='buy'?'구매':'판매'} · {trade.price} 골드</h3>{trade.targeted&&<p>지정 획득품은 계정당 평생 한 번만 얻습니다. 판매하거나 소모해도 다시 획득·구매할 수 없습니다.</p>}{trade.action==='sell'&&<p>가방에서 이 아이템이 사라집니다. 선행 조건으로 사용 중이면 연계 아이템을 사용할 수 없게 될 수 있습니다.</p>}<div className="actions"><button onClick={()=>setTrade(null)}>취소</button><button className="primary" onClick={()=>run(async()=>{await rpc('shop_trade',{p_shop:trade.shop,p_action:trade.action,p_entity:trade.entity,p_item:trade.item,p_request:trade.request,p_expected_price:trade.price});setTrade(null);},'거래가 완료되었습니다.')}>확인 · {trade.action==='buy'?'구매':'판매'}</button></div></section>}
+ <h3>구매</h3><div className="shop-catalog">{data.shop_products.filter(p=>p.shop===current.id).map(p=>{const e=entities.find(e=>e.id===p.entity);if(!e)return null;const learned=e.kind==='skill'&&data.learned_skills.some(s=>s.student===data.profile.id&&s.skill===e.id);const once=!!e.data.obtain_target&&data.acquisitions.some(a=>a.student===data.profile.id&&a.entity===e.id);const prerequisites=hasPrerequisites(e.data,data);return <article className="list-card" key={p.id}><strong>{e.name} · {labels[e.kind]}</strong><p>{e.data.description}</p>{e.data.prerequisites?.length>0&&<p>선행: {requirementsText(e.data,data)}</p>}<p>{p.price} 골드 · 재고 {p.stock??'무제한'}</p><button disabled={!!trade||p.stock===0||learned||once||!prerequisites||data.profile.gold<p.price} onClick={()=>confirm({action:'buy',entity:e.id,item:null,price:p.price,name:e.name,targeted:!!e.data.obtain_target})}>{learned?'이미 습득':once?'지정 품목 획득 완료':!prerequisites?'선행 조건 미충족':p.stock===0?'품절':'구매'}</button></article>;})}</div>
+ <h3>가방 아이템 판매</h3><p>장비는 해제 후 판매하세요. 기술은 판매하지 않습니다.</p><div className="shop-catalog">{data.inventory.filter(i=>i.student===data.profile.id).map(i=><article className="list-card" key={i.id}><strong>{i.name}</strong><p>{i.sale_value} 골드{i.data.obtain_target?' · 판매 후 재획득 불가':''}</p><button disabled={!!trade||i.equipped} onClick={()=>confirm({action:'sell',entity:null,item:i.id,price:i.sale_value,name:i.name,targeted:!!i.data.obtain_target})}>{i.equipped?'장착 해제 필요':'판매'}</button></article>)}</div>
+ </>}</div>;
+}

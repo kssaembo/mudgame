@@ -1,5 +1,5 @@
 {
-  "exclude": ["supabase/functions", "node_modules", ".tool-cache", "tests", "배포본"],
+  "exclude": ["supabase/functions", "node_modules", ".tool-cache", "tests", "배포본", "tmp"],
   "compilerOptions": {
     "target": "ES2022",
     "experimentalDecorators": true,
