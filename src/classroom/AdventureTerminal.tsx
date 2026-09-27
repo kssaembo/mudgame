@@ -78,7 +78,7 @@ export default function AdventureTerminal({data,run,busy=false,panelOpen=false,p
    if(!battle)return;
    const result=await rpc('answer',{p_token:battle.token,p_answer:value,p_effect:effect||null});
    write(`${result.correct?'[정답]':'[오답]'} 가한 피해 ${result.damage} / 받은 피해 ${result.taken}\n${result.explanation}`);
-   if(result.status==='won')write(`[승리] ${monster?.name||'몬스터'} 처치! EXP +${result.exp} · 골드 +${result.gold||0}\n창조력 +${result.creativity||0}${result.loot?`\n[전리품] ${result.loot} → 가방에 보관`:''}${result.levels?`\n[LEVEL UP] ${result.levels}레벨 상승! 체력 회복 · 능력치 증가`:''}`);
+   if(result.status==='won')write(`[승리] ${monster?.name||'몬스터'} 처치! EXP +${result.exp}\n창조력 +${result.creativity||0}${result.loot?`\n[전리품] ${result.loot} → 가방에 보관`:''}${result.levels?`\n[LEVEL UP] ${result.levels}레벨 상승! 체력 회복 · 능력치 증가`:''}`);
    if(result.status==='lost')write('[구조] 광장으로 돌아왔습니다. 체력을 회복했으니 다시 도전하세요.');
    if(result.skill)write(`[기술 습득] ${result.skill} · 기술 명령어로 확인하세요.`);
  });
@@ -111,7 +111,7 @@ export default function AdventureTerminal({data,run,busy=false,panelOpen=false,p
  return <section ref={terminal} className={`powershell ${full?'ps-fullscreen':''}`} aria-label="세계 탐험 터미널">
  <div className="ps-title"><div><span className="ps-symbol">›_</span> 우리 반 MUD <small>{data.profile.nickname} · {preview?'미리보기':'온라인 탐험'}</small></div><button aria-label={full?'전체화면 종료':'터미널 전체화면'} onClick={toggleFull}>{full?<Minimize2 size={16}/>:<Maximize2 size={16}/>} {full?'창 모드':'전체화면'}</button></div>
  {toolbar}
- <div className="ps-top"><div><strong>{loc?.name||'배움의 광장'}</strong><div className="ps-stats" aria-label="내 능력치"><span>레벨 <b>{data.profile.level}</b></span><span className={data.profile.hp<=effective.max_hp*.3?'stat-low':''}>체력 <b>{data.profile.hp}/{effective.max_hp}</b></span><span>공격 <b>{effective.attack}</b></span><span>방어 <b>{effective.defense}</b></span><span>EXP <b>{data.profile.exp}/100</b></span><span>골드 <b>{data.profile.gold||0}</b></span></div></div>
+ <div className="ps-top"><div><strong>{loc?.name||'배움의 광장'}</strong><div className="ps-stats" aria-label="내 능력치"><span>레벨 <b>{data.profile.level}</b></span><span className={data.profile.hp<=effective.max_hp*.3?'stat-low':''}>체력 <b>{data.profile.hp}/{effective.max_hp}</b></span><span>공격 <b>{effective.attack}</b></span><span>방어 <b>{effective.defense}</b></span><span>EXP <b>{data.profile.exp}/100</b></span></div></div>
  <div className="compass-area"><div className="cli-compass" aria-label="현재 위치와 동서남북 지도">
  {direction('북')}<span className="compass-up">↑</span><div className="compass-middle">{direction('서')}<span>←</span><strong title={loc?.name}>현 위치 ({loc?.name||'배움의 광장'})</strong><span>→</span>{direction('동')}</div><span className="compass-down">↓</span>{direction('남')}
  </div>{data.places.filter(p=>p.village_id===loc?.id&&p.active).map(p=><div className="compass-building" key={p.id}>입장 → {p.name}</div>)}{loc?.village_id&&<div className="compass-building">퇴장 → {data.places.find(p=>p.id===loc.village_id)?.name}</div>}</div></div>
