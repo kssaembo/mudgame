@@ -10,18 +10,18 @@ export default function StudentShell({data,run,preview,busy,error,notice,onLeave
  const changeTheme=(value:string)=>{setTheme(value);localStorage.setItem('mud_terminal_theme',value);};
  const command=(raw:string)=>{
   const cmd=raw.replace(/\s/g,'');
-  const pages:Record<string,string>={'상점':'shops','상인':'shops','명령어':'commands','도움말':'commands','help':'commands','?':'commands','문제만들기':'questions','창작작업실':'proposals','창조력':'wallet','성장':'wallet','창조력성장':'wallet','창조력,성장':'wallet','나가기':'logout','로그아웃':'logout'};
+  const pages:Record<string,string>={'강화':'enhance','강화사':'enhance','상점':'shops','상인':'shops','명령어':'commands','도움말':'commands','help':'commands','?':'commands','문제만들기':'questions','창작작업실':'proposals','창조력':'wallet','성장':'wallet','창조력성장':'wallet','창조력,성장':'wallet','나가기':'logout','로그아웃':'logout'};
   if(pages[cmd]){setLeaveError('');setPanel(pages[cmd]);return true;}
   const colors:Record<string,string>={'색상파랑':'blue','색상초록':'green','색상검정':'black'};
   if(colors[cmd]){changeTheme(colors[cmd]);return true;}return false;
  };
- const titles:Record<string,string>={shops:'상점 · 상인',commands:'명령어 모음',questions:'문제 만들기',proposals:'창작 작업실',wallet:'창조력 · 성장',logout:'나가기 확인'};
+ const titles:Record<string,string>={enhance:'강화사',shops:'상점 · 상인',commands:'명령어 모음',questions:'문제 만들기',proposals:'창작 작업실',wallet:'창조력 · 성장',logout:'나가기 확인'};
  const messages=<>{error&&<div role="alert" className="alert">{error}</div>}{notice&&<div role="status" className="notice">{notice}</div>}{busy&&<div role="status">처리 중…</div>}</>;
  return <div className={`classroom student-shell theme-${theme}`}>
  <fieldset className="student-workspace" disabled={busy||leaving}>
  <Adventure data={data} run={run} busy={busy||leaving} panelOpen={!!panel} preview={preview} onAppCommand={command} messages={!panel?messages:null} toolbar={<>
   <div className="cli-hint">입력창에 명령어 라고 입력해 보세요. 활용 가능한 명령어를 볼 수 있습니다.</div>
-  <div className="cli-tools"><div className="cli-menu">{[['shops','상점'],['commands','명령어 모음'],['questions','문제만들기'],['proposals','창작 작업실'],['wallet','창조력,성장'],['logout','나가기']].map(([id,label])=><button key={id} onClick={()=>{setLeaveError('');setPanel(id);}}>[{label}]</button>)}</div>
+  <div className="cli-tools"><div className="cli-menu">{[['enhance','강화'],['shops','상점'],['commands','명령어 모음'],['questions','문제만들기'],['proposals','창작 작업실'],['wallet','창조력,성장'],['logout','나가기']].map(([id,label])=><button key={id} onClick={()=>{setLeaveError('');setPanel(id);}}>[{label}]</button>)}</div>
   <div className="cli-theme" role="tablist" aria-label="화면 색상">{[['green','초록'],['black','검정'],['blue','파란']].map(([value,label],index)=><button key={value} role="tab" aria-selected={theme===value} tabIndex={theme===value?0:-1} onClick={()=>changeTheme(value)} onKeyDown={e=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();const next=e.key==='Home'?0:e.key==='End'?2:(index+(e.key==='ArrowRight'?1:2))%3;changeTheme(['green','black','blue'][next]);(e.currentTarget.parentElement?.children[next] as HTMLElement)?.focus();}}>{label} 배경</button>)}</div>
   <strong className="cli-balance">창조력 {data.profile.balance-data.profile.reserved}<small>예약 {data.profile.reserved}</small></strong></div>
  </>}/></fieldset>

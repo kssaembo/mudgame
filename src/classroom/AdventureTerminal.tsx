@@ -1,5 +1,6 @@
 import {useEffect,useRef,useState,type ReactNode} from 'react';
 import {Maximize2,Minimize2} from 'lucide-react';
+import {enhancedData} from './enhancement';
 import {rpc} from './api';
 import {hasPrerequisites,requirementsText} from './creationRules';
 import {labels,type Snapshot} from './model';
@@ -21,6 +22,7 @@ export const help=`명령어 안내
   가방                내 아이템 목록 (보유 수 제한 없음)
   기술                탐험으로 습득한 기술 목록
   상점 / 상인         현재 장소의 상점 열기
+  강화 / 강화사       현재 장소의 강화사 만나기
   장착 1 / 해제 1     가방 번호의 장비 착용 / 해제
   사용 1              가방 번호의 회복 소모품 사용 (전투 밖)
   사용 / 접기         사용할 아이템 번호 선택 / 가방 닫기
@@ -59,10 +61,10 @@ export default function AdventureTerminal({data,run,busy=false,panelOpen=false,p
  const serial=useRef(1),output=useRef<HTMLDivElement>(null),content=useRef<HTMLDivElement>(null),input=useRef<HTMLInputElement>(null),followLatest=useRef(true);
  const [choosingItem,setChoosingItem]=useState(false);
  const loc=data.places.find(p=>p.id===data.profile.location),battle=data.battle,monster=data.entities.find(e=>e.id===battle?.monster);
- const inventory=[...(data.inventory||[])].filter(i=>i.student===data.profile.id).sort((a,b)=>a.acquired_at.localeCompare(b.acquired_at)||a.id.localeCompare(b.id));
- const learned=data.entities.filter(e=>e.kind==='skill'&&e.active&&hasPrerequisites(e.data,data)&&(data.learned_skills||[]).some(k=>k.student===data.profile.id&&k.skill===e.id));
+ const inventory=[...(data.inventory||[])].filter(i=>i.student===data.profile.id).map(i=>({...i,data:enhancedData(i.data,i.enhancement||0)})).sort((a,b)=>a.acquired_at.localeCompare(b.acquired_at)||a.id.localeCompare(b.id));
+ const learned=data.entities.filter(e=>e.kind==='skill'&&e.active&&hasPrerequisites(e.data,data)&&(data.learned_skills||[]).some(k=>k.student===data.profile.id&&k.skill===e.id)).map(e=>{const level=data.learned_skills.find(k=>k.student===data.profile.id&&k.skill===e.id)?.enhancement||0;return {...e,name:e.name+(level?` +${level}`:''),data:enhancedData(e.data,level)};});
  const effective={attack:data.profile.attack,defense:data.profile.defense,max_hp:data.profile.max_hp};
- inventory.filter(i=>i.equipped).forEach(i=>{effective.attack+=Number(i.data.attack||0);effective.defense+=Number(i.data.defense||0);effective.max_hp+=Number(i.data.hp||0);});
+ inventory.filter(i=>i.equipped&&hasPrerequisites(i.data,data)).forEach(i=>{effective.attack+=Number(i.data.attack||0);effective.defense+=Number(i.data.defense||0);effective.max_hp+=Number(i.data.hp||0);});
  effective.attack=Math.max(1,effective.attack);effective.defense=Math.max(0,effective.defense);effective.max_hp=Math.max(1,effective.max_hp);
  const write=(text:string)=>{followLatest.current=true;setLines(v=>[...v.slice(-160),{id:serial.current++,text}]);};
  const focusCommand=()=>{if(!document.querySelector('dialog[open]')&&!input.current?.matches(':disabled'))input.current?.focus({preventScroll:true});};
@@ -80,6 +82,7 @@ export default function AdventureTerminal({data,run,busy=false,panelOpen=false,p
    write(`${result.correct?'[정답]':'[오답]'} 가한 피해 ${result.damage} / 받은 피해 ${result.taken}\n${result.explanation}`);
    if(result.status==='won')write(`[승리] ${monster?.name||'몬스터'} 처치! EXP +${result.exp}\n창조력 +${result.creativity||0}${result.loot?`\n[전리품] ${result.loot} → 가방에 보관`:''}${result.levels?`\n[LEVEL UP] ${result.levels}레벨 상승! 체력 회복 · 능력치 증가`:''}`);
    if(result.status==='lost')write('[구조] 광장으로 돌아왔습니다. 체력을 회복했으니 다시 도전하세요.');
+   if(result.stones)write(`[전리품] 강화의 돌 +${result.stones}개 · 가방에서 확인하세요.`);
    if(result.skill)write(`[기술 습득] ${result.skill} · 기술 명령어로 확인하세요.`);
  });
  const act=(raw:string)=>{
@@ -115,8 +118,8 @@ export default function AdventureTerminal({data,run,busy=false,panelOpen=false,p
  <div className="compass-area"><div className="cli-compass" aria-label="현재 위치와 동서남북 지도">
  {direction('북')}<span className="compass-up">↑</span><div className="compass-middle">{direction('서')}<span>←</span><strong title={loc?.name}>현 위치 ({loc?.name||'배움의 광장'})</strong><span>→</span>{direction('동')}</div><span className="compass-down">↓</span>{direction('남')}
  </div>{data.places.filter(p=>p.village_id===loc?.id&&p.active).map(p=><div className="compass-building" key={p.id}>입장 → {p.name}</div>)}{loc?.village_id&&<div className="compass-building">퇴장 → {data.places.find(p=>p.id===loc.village_id)?.name}</div>}</div></div>
- <div className="ps-output" ref={output} onScroll={e=>{const el=e.currentTarget;followLatest.current=el.scrollHeight-el.scrollTop-el.clientHeight<80;}}><div ref={content} className="ps-output-content">{messages}<p className="ps-location-description">{loc?.description?.replaceAll('나가기로','퇴장으로')}</p>{lines.map(l=><div key={l.id}><Stream text={l.text}/></div>)}
- {showBag&&<div className="ps-bag"><div className="row-between"><strong>┌─ 가방 · {inventory.length}개 / 제한 없음 ─┐</strong><button onClick={()=>act('접기')}>접기</button></div>{inventory.length===0?<p>아직 아이템이 없습니다.</p>:inventory.map((i,n)=><div className="ps-inventory-row" key={i.id}><div><b>[{n+1}] {i.name} {i.equipped?'[장착 중]':''}</b><small>{labels[i.slot]} · 공격 {i.data.attack||0} / 방어 {i.data.defense||0} / 체력 {i.data.hp||0} · {labels[i.data.effect]||'효과 없음'} {i.data.power||0}</small>{i.data.prerequisites?.length>0&&<small>선행: {requirementsText(i.data,data)} {hasPrerequisites(i.data,data)?'✓':'미충족'}</small>}{i.data.obtain_target&&<small>지정 획득품 · 판매·소모 후 재획득 불가</small>}</div><button disabled={!!battle} onClick={()=>act(`${i.slot==='consumable'?'사용':i.equipped?'해제':'장착'} ${n+1}`)}>{i.slot==='consumable'?'사용':i.equipped?'해제':'장착'}</button></div>)}<p>공격·방어 소모품은 전투에서 선택하세요. 장착 한도: 무기 2개 · 방어구+장신구 4개. 같은 아이템은 하나만 장착할 수 있습니다.</p></div>}
+ <div className="ps-output" ref={output} onScroll={e=>{const el=e.currentTarget;followLatest.current=el.scrollHeight-el.scrollTop-el.clientHeight<80;}}><div ref={content} className="ps-output-content">{messages}<p className="ps-location-description">{loc?.description?.replaceAll('나가기로','퇴장으로')}</p>{data.blacksmiths.filter(s=>s.active&&s.place===loc?.id).map(s=><p key={s.id}>[강화사] {s.name} · 강화 명령으로 만날 수 있습니다.</p>)}{data.shops.filter(s=>s.active&&s.place===loc?.id).map(s=><p key={s.id}>[상점·상인] {s.name} · 상점 명령으로 이용하세요.</p>)}{lines.map(l=><div key={l.id}><Stream text={l.text}/></div>)}
+ {showBag&&<div className="ps-bag"><div className="row-between"><strong>┌─ 가방 · {inventory.length}개 / 제한 없음 ─┐</strong><button onClick={()=>act('접기')}>접기</button></div><p>[재료] 강화의 돌 {data.profile.enhancement_stones||0}개 · 강화 전용, 판매 불가</p>{inventory.length===0?<p>아직 아이템이 없습니다.</p>:inventory.map((i,n)=><div className="ps-inventory-row" key={i.id}><div><b>[{n+1}] {i.name}{i.enhancement?` +${i.enhancement}`:''} {i.equipped?'[장착 중]':''}</b><small>{labels[i.slot]} · 공격 {i.data.attack||0} / 방어 {i.data.defense||0} / 체력 {i.data.hp||0} · {labels[i.data.effect]||'효과 없음'} {i.data.power||0}</small>{i.data.prerequisites?.length>0&&<small>선행: {requirementsText(i.data,data)} {hasPrerequisites(i.data,data)?'✓':'미충족'}</small>}{i.data.obtain_target&&<small>지정 획득품 · 판매·소모 후 재획득 불가</small>}</div><button disabled={!!battle} onClick={()=>act(`${i.slot==='consumable'?'사용':i.equipped?'해제':'장착'} ${n+1}`)}>{i.slot==='consumable'?'사용':i.equipped?'해제':'장착'}</button></div>)}<p>공격·방어 소모품은 전투에서 선택하세요. 장착 한도: 무기·방어구·장신구 각 1개. 같은 아이템은 하나만 장착할 수 있습니다.</p></div>}
  {battle&&<div className="ps-battle"><div className="row-between"><strong>⚔ {monster?.name||'몬스터'} · Lv.{battle.level||monster?.data.level||1}</strong><span>HP {battle.hp} · 정답 {battle.correct_count}회</span></div><small>{battle.question.subject} · {labels[battle.question.kind]}{battle.repeated?' · 준비된 문제를 모두 풀어 복습합니다.':''}</small><h3>{battle.question.body}</h3>
  <form onSubmit={e=>{e.preventDefault();submitAnswer(answer);}}>{battle.question.kind==='short'?<input aria-label="단답형 정답" required value={answer} onChange={e=>setAnswer(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&e.nativeEvent.isComposing)e.preventDefault();}} placeholder="정답 입력"/>:<div className="battle-choices">{(battle.question.kind==='ox'?['O','X']:battle.question.options).map((o,i)=>{const value=battle.question.kind==='ox'?o:String(i+1);return <label key={i}><input type="radio" name="battle-answer" required checked={answer===value} onChange={()=>setAnswer(value)}/>{battle.question.kind==='choice'?`${i+1}. `:''}{o}</label>;})}</div>}
  <div className="ps-battle-actions"><select aria-label="전투 아이템 또는 기술" value={effect} onChange={e=>setEffect(e.target.value)}><option value="">기본 공격</option>{inventory.filter(i=>hasPrerequisites(i.data,data)&&(i.slot==='consumable'||(i.equipped&&i.data.effect!=='none'))).map(i=><option key={i.id} value={i.id}>{i.name} · {i.slot==='consumable'?'소모품':'장비 효과'}</option>)}{learned.map(e=><option key={e.id} value={e.id}>{e.name} · {labels[e.data.effect]} +{e.data.power}</option>)}</select><button type="submit">정답 제출 · 행동 실행</button><button type="button" onClick={()=>act('후퇴')}>후퇴</button></div></form></div>}

@@ -26,7 +26,7 @@ export async function snapshot():Promise<Snapshot|null> {
  if(error) throw new Error('학급 데이터베이스 설정이 필요합니다. SETUP.md의 설치 단계를 확인해 주세요.');
  if(!profile) throw new Error('교사 계정 지정 또는 학생 가입 승인이 필요합니다.');
  if(profile.status!=='approved') throw new Error('승인 대기 또는 이용 중지 상태입니다. 선생님께 확인해 주세요.');
- const tables=['settings','questions','proposals','places','links','entities','ledger','inventory','learned_skills','shops','shop_products','acquisitions'];
+ const tables=['settings','questions','proposals','places','links','entities','ledger','inventory','learned_skills','shops','shop_products','acquisitions','blacksmiths'];
  // Pagination removes the old 1,000-row inventory/world cap.
  const results=await Promise.all(tables.map(async t=>{
    const rows:any[]=[];
@@ -34,7 +34,7 @@ export async function snapshot():Promise<Snapshot|null> {
      let query=supabase!.from(`mud_${t}`).select('*').order(t==='links'?'source':'id');
      if(t==='links') query=query.order('direction');
      const {data,error}=await query.range(offset,offset+999);
-     if(error) throw new Error(error.code==='PGRST205'?'새 기능 데이터베이스 업데이트가 필요합니다. 202609290010_classroom_refinement.sql까지 순서대로 적용해 주세요.':error.message);
+     if(error) throw new Error(error.code==='PGRST205'?'새 기능 데이터베이스 업데이트가 필요합니다. 202609300011_enhancement.sql까지 순서대로 적용해 주세요.':error.message);
      rows.push(...data);if(data.length<1000)break;
    }
    return rows;
