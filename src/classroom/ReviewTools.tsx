@@ -1,0 +1,14 @@
+import {useState} from 'react';
+import Modal from './Modal';
+import {rpc} from './api';
+import {labels,type Question} from './model';
+type Run=(action:()=>Promise<unknown>,message?:string)=>Promise<void>;
+export function QuickFeedback({value,onChange,creation=false}:{value:string;onChange:(s:string)=>void;creation?:boolean}){
+ const choices=creation?['설명을 조금 더 자세히 적어 주세요.','이름이 겹치지 않는지 확인해 주세요.','능력치를 조정해 주세요.','수업과 관련된 내용으로 만들어 주세요.']:['정답을 다시 확인해 주세요.','해설을 보충해 주세요.','문제의 뜻이 분명하도록 고쳐 주세요.','보기 네 개를 다시 확인해 주세요.','중복된 문제입니다.'];
+ return <div className="quick-feedback" aria-label="검토 의견 빠른 입력">{choices.map(s=><button type="button" key={s} onClick={()=>onChange(value.includes(s)?value:[value,s].filter(Boolean).join(' '))}>{s}</button>)}<button type="button" onClick={()=>onChange('')}>의견 비우기</button></div>;
+}
+export function QuestionPolish({question:q,bonus,accepted,feedback,run,onClose}:{question:Question;bonus:number;accepted:string[];feedback:string;run:Run;onClose:()=>void}){
+ const [body,setBody]=useState(q.body),[options,setOptions]=useState([...q.options]),[explanation,setExplanation]=useState(q.explanation),[confirmed,setConfirmed]=useState(false),[saving,setSaving]=useState(false),[error,setError]=useState('');
+ const [request]=useState(()=>crypto.randomUUID());
+ return <Modal title="표현 수정 후 승인" onClose={onClose} busy={saving}><p>오탈자와 표현만 다듬어 주세요. 개념·정답을 바꿔야 한다면 닫고 수정 요청 또는 반려를 선택하세요.</p><p><strong>{q.subject} · {labels[q.kind]} · 정답 {q.answer}</strong> (변경 불가)</p><form onSubmit={e=>{e.preventDefault();if(!confirmed)return;setSaving(true);setError('');run(async()=>{try{await rpc('polish_question',{p_id:q.id,p_original:{body:q.body,options:q.options,explanation:q.explanation,subject:q.subject,kind:q.kind,answer:q.answer},p_body:body,p_options:options,p_explanation:explanation,p_confirm:true,p_bonus:bonus,p_accepted:accepted,p_feedback:feedback,p_request:request});onClose();}catch(err){setError((err as Error).message);throw err;}},'표현을 수정하고 승인·창조력 지급을 완료했습니다.').finally(()=>setSaving(false));}}><fieldset disabled={saving}><label>문제 표현<textarea required minLength={3} maxLength={2000} value={body} onChange={e=>setBody(e.target.value)}/></label>{q.kind==='choice'&&options.map((s,i)=><label key={i}>보기 {i+1}{q.answer===String(i+1)?' · 정답 보기':''}<input required maxLength={500} value={s} onChange={e=>setOptions(v=>v.map((x,n)=>n===i?e.target.value:x))}/></label>)}<label>해설 표현<textarea required maxLength={2000} value={explanation} onChange={e=>setExplanation(e.target.value)}/></label><label className="toggle"><input type="checkbox" required checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/>문제의 뜻과 정답을 바꾸지 않고 표현만 수정했습니다.</label><p>작성자는 원래 학생으로 유지합니다. 최초 승인 보상과 설정된 추가 창조력 {bonus}를 기존 규칙에 따라 지급합니다.</p>{error&&<p role="alert">{error}</p>}<button className="primary" disabled={!confirmed||saving}>저장하고 승인 · 창조력 지급</button></fieldset></form></Modal>;
+}

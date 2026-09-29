@@ -1,5 +1,5 @@
 export type Profile = { id: string; nickname: string; role: 'teacher'|'student'; status: string; mana?:number; free_heal_at?:string; enhancement_stones?:number; balance: number; reserved: number; hp: number; max_hp: number; attack: number; defense: number; level: number; exp: number; location: string };
-export type Question = { id: string; author: string; subject: string; kind: 'ox'|'short'|'choice'; body: string; options: string[]; answer: string; explanation: string; accepted: string[]; status: string; feedback: string; rewarded: boolean; created_at: string };
+export type Question = { teacher_edited_at?:string; id: string; author: string; subject: string; kind: 'ox'|'short'|'choice'; body: string; options: string[]; answer: string; explanation: string; accepted: string[]; status: string; feedback: string; rewarded: boolean; created_at: string };
 export type Settings = { id: boolean; subjects: string[]; question_reward: number; daily_reward_cap: number; room_cost: number; stat_cost: number; stat_cap: number; monster_base: number; effect_base: number; npc_cost:number; book_cost:number; stone_daily_cap?:number; adventure_daily_cap:number; loot_chance:number; encounter_chance:number; book_reward_chance:number; battle_skill_chance:number; battle_equipment_chance:number; battle_consumable_chance:number; book_skill_chance:number; book_equipment_chance:number; book_consumable_chance:number; npc_skill_chance:number; npc_equipment_chance:number; npc_consumable_chance:number; registration_open: boolean; creation_open: boolean; paused: boolean };
 export type Place = { id: string; creator: string|null; name: string; description: string; category: string; active: boolean; protected: boolean; x: number; y: number; village_id?:string|null };
 export type Entity = { id: string; creator: string; kind: string; creation_cost:number; name: string; data: Record<string, any>; active: boolean; place: string|null };
@@ -27,7 +27,7 @@ export function validateQuestion(q: Pick<Question,'subject'|'kind'|'body'|'optio
 export function estimate(kind: string, d: Record<string,any>, s: Settings) {
  let cost:number;
  if(kind==='map') cost=Number(d.count)*s.room_cost;
- else if(kind==='npc'||kind==='book') cost=(kind==='npc'?s.npc_cost:s.book_cost)+Math.max(0,Math.ceil(Array.from(d.description||'').length/500)-1);
+ else if(kind==='npc'||kind==='book') cost=(kind==='npc'?s.npc_cost:s.book_cost)+Math.max(0,Math.ceil(Array.from(kind==='npc'&&d.dialogues?d.dialogues.join('\n'):d.description||'').length/500)-1);
  else if(kind==='monster') cost=s.monster_base+Math.ceil(Number(d.hp)/10)+Number(d.attack)+Number(d.defense)+Number(d.level)*2+Number(d.power||0)*2;
  else if(kind==='item') {
  const hp=Number(d.hp||0),attack=Number(d.attack||0),defense=Number(d.defense||0);

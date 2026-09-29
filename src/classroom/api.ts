@@ -4,7 +4,7 @@ const env = (import.meta as any).env;
 export const supabase = env.VITE_SUPABASE_URL && env.VITE_SUPABASE_ANON_KEY ? createClient(env.VITE_SUPABASE_URL,env.VITE_SUPABASE_ANON_KEY) : null;
 export async function rpc<T=any>(name:string,args:Record<string,unknown>={}) : Promise<T> {
  if(!supabase) throw new Error('Supabase 연결 정보가 필요합니다.');
- const {data,error}=await supabase.rpc(`mud_${name}`,args); if(error) {if(error.code==='PGRST202')throw new Error('데이터베이스 업데이트가 필요합니다. 202610010012_vitals.sql까지 적용해 주세요.');throw error;} return data as T;
+ const {data,error}=await supabase.rpc(`mud_${name}`,args); if(error) {if(error.code==='PGRST202')throw new Error('데이터베이스 업데이트가 필요합니다. 202610020013_usability.sql까지 적용해 주세요.');throw error;} return data as T;
 }
 export async function studentAccess(action:string,nickname:string,pin:string,studentId?:string) {
  if(!supabase) throw new Error('Supabase 연결 정보가 필요합니다.');
@@ -33,6 +33,7 @@ export async function snapshot(screen='home'):Promise<Snapshot|null> {
  if(!teacher&&screen!=='proposals'){
  const r=await supabase.from('mud_links').select('target').eq('source',profile.location);if(r.error)throw r.error;
  nearby.push(...r.data.map(x=>x.target));
+ const location=await supabase.from('mud_places').select('village_id').eq('id',profile.location).maybeSingle();if(location.error)throw location.error;if(location.data?.village_id)nearby.push(location.data.village_id);
  }
  if(!teacher&&screen==='shops'){const r=await supabase.from('mud_shops').select('id').eq('place',profile.location).eq('active',true);if(r.error)throw r.error;localShops=r.data.map(x=>x.id);}
  const names=['settings','questions','proposals','places','links','entities','ledger','inventory','learned_skills','shops','shop_products','acquisitions','blacksmiths'];
@@ -54,7 +55,7 @@ export async function snapshot(screen='home'):Promise<Snapshot|null> {
      }
      if(t==='links') query=query.order('direction');
      const {data,error}=await query.range(offset,t==='ledger'?49:offset+999);
-     if(error) throw new Error(error.code==='PGRST205'?'새 기능 데이터베이스 업데이트가 필요합니다. 202610010012_vitals.sql까지 순서대로 적용해 주세요.':error.message);
+     if(error) throw new Error(error.code==='PGRST205'?'새 기능 데이터베이스 업데이트가 필요합니다. 202610020013_usability.sql까지 순서대로 적용해 주세요.':error.message);
      rows.push(...data);if(t==='ledger'||data.length<1000)break;
    }
    return rows;
