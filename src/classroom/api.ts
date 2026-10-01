@@ -31,9 +31,9 @@ export async function snapshot(screen='home'):Promise<Snapshot|null> {
  const battle=teacher?null:await rpc('battle_view');
  let nearby:string[]=[profile.location],localShops:string[]=[];
  if(!teacher&&screen!=='proposals'){
- const r=await supabase.from('mud_links').select('target').eq('source',profile.location);if(r.error)throw r.error;
- nearby.push(...r.data.map(x=>x.target));
- const location=await supabase.from('mud_places').select('village_id').eq('id',profile.location).maybeSingle();if(location.error)throw location.error;if(location.data?.village_id)nearby.push(location.data.village_id);
+ const location=await supabase.from('mud_places').select('x,y,village_id').eq('id',profile.location).maybeSingle();if(location.error)throw location.error;
+ if(location.data?.village_id)nearby.push(location.data.village_id);
+ else if(location.data){const {x,y}=location.data;const r=await supabase.from('mud_places').select('id').eq('active',true).is('village_id',null).or(`and(x.eq.${x+1},y.eq.${y}),and(x.eq.${x-1},y.eq.${y}),and(x.eq.${x},y.eq.${y+1}),and(x.eq.${x},y.eq.${y-1})`);if(r.error)throw r.error;nearby.push(...r.data.map(p=>p.id));}
  }
  if(!teacher&&screen==='shops'){const r=await supabase.from('mud_shops').select('id').eq('place',profile.location).eq('active',true);if(r.error)throw r.error;localShops=r.data.map(x=>x.id);}
  const names=['settings','questions','proposals','places','links','entities','ledger','inventory','learned_skills','shops','shop_products','acquisitions','blacksmiths'];

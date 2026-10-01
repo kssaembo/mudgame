@@ -14,7 +14,7 @@ export const help=`명령어 안내
   창조력 / 성장       창조력 내역과 성장 팝업 열기
   나가기 / 로그아웃   확인 후 게임에서 나가기
   색상 파랑/초록/검정 화면 색상 변경
-  동 / 서 / 남 / 북    연결된 길로 이동 (숲·길·던전에서는 무작위 조우)
+  동 / 서 / 남 / 북    인접한 맵으로 이동 (숲·길·던전에서는 무작위 조우)
   봐라                현재 장소와 발견한 것 확인
   공격 / 후퇴         몬스터 찾기 / 전투에서 물러나기
   대화                마을에서 만난 NPC와 이야기
@@ -118,7 +118,7 @@ export default function AdventureTerminal({data,run,busy=false,panelOpen=false,p
      else throw new Error('알 수 없는 명령입니다. 도움말을 입력하세요.');
    });
  };
- const destination=(dir:string)=>{const link=data.links.find(l=>l.source===loc?.id&&l.direction===dir);return data.places.find(p=>p.id===link?.target&&p.active);};
+ const destination=(dir:string)=>{const step:{[key:string]:[number,number]}={동:[1,0],서:[-1,0],남:[0,1],북:[0,-1]};const [dx,dy]=step[dir]||[0,0];return data.places.find(p=>p.active&&!p.village_id&&p.x===(loc?.x??0)+dx&&p.y===(loc?.y??0)+dy);};
  const direction=(dir:string)=>{const dest=destination(dir);return <button type="button" className={`compass-place compass-${dir}`} disabled={!dest||!!battle} onClick={()=>act(dir)} title={dest?`${dest.name} (${dir})`:`길 없음 (${dir})`}><span className="compass-name">{dest?.name||'길 없음'}</span><span>({dir})</span></button>;};
  return <section ref={terminal} className={`powershell ${full?'ps-fullscreen':''}`} aria-label="세계 탐험 터미널">
  <div className="ps-title"><div><span className="ps-symbol">›_</span> 우리 반 MUD <small>{data.profile.nickname} · {preview?'미리보기':'온라인 탐험'}</small></div><button aria-label={full?'전체화면 종료':'터미널 전체화면'} onClick={toggleFull}>{full?<Minimize2 size={16}/>:<Maximize2 size={16}/>} {full?'창 모드':'전체화면'}</button></div>
