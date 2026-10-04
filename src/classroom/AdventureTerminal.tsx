@@ -5,6 +5,7 @@ import {enhancedData} from './enhancement';
 import {rpc} from './api';
 import {hasPrerequisites,requirementsText} from './creationRules';
 import {labels,type Snapshot} from './model';
+import {playRetroSfx,setBackgroundMusic,sfxForText,stopBackgroundMusic,type MusicTrack} from './retroAudio';
 
 type Run=(action:()=>Promise<unknown>,message?:string)=>Promise<void>;
 export const help=`명령어 안내
@@ -14,6 +15,8 @@ export const help=`명령어 안내
   창조력 / 성장       창조력 내역과 성장 팝업 열기
   나가기 / 로그아웃   확인 후 게임에서 나가기
   색상 파랑/초록/검정 화면 색상 변경
+  음악 켜기 / 음악 끄기 배경음악 재생 설정
+  효과음 켜기 / 효과음 끄기 고전 게임 효과음 설정
   동 / 서 / 남 / 북    인접한 맵으로 이동 (숲·길·던전에서는 무작위 조우)
   봐라                현재 장소와 발견한 것 확인
   공격 / 후퇴         몬스터 찾기 / 전투에서 물러나기
@@ -60,6 +63,7 @@ function Stream({text}:{text:string}) {
 export default function AdventureTerminal({data,run,busy=false,panelOpen=false,preview=false,onAppCommand,toolbar,messages}:{data:Snapshot;run:Run;busy?:boolean;panelOpen?:boolean;preview?:boolean;onAppCommand?:(cmd:string)=>boolean;toolbar?:ReactNode;messages?:ReactNode}) {
  const terminal=useRef<HTMLElement>(null);
  const [full,setFull]=useState(false),[command,setCommand]=useState(''),[answer,setAnswer]=useState(''),[effect,setEffect]=useState('');
+ const [musicOn,setMusicOn]=useState(()=>localStorage.getItem('mud_music_enabled')==='true'),[sfxOn,setSfxOn]=useState(()=>localStorage.getItem('mud_sfx_enabled')!=='false');
  const [lines,setLines]=useState([{id:0,text:'우리 반 MUD [Classroom Adventure]\n배움으로 넓어지는 세계에 오신 것을 환영합니다.\n「도움말」을 입력해 모험을 시작하세요.'}]);
  const [showBag,setShowBag]=useState(false),[history,setHistory]=useState<string[]>([]),[historyIndex,setHistoryIndex]=useState(-1);
  const serial=useRef(1),output=useRef<HTMLDivElement>(null),content=useRef<HTMLDivElement>(null),input=useRef<HTMLInputElement>(null),followLatest=useRef(true);
@@ -72,7 +76,11 @@ export default function AdventureTerminal({data,run,busy=false,panelOpen=false,p
  const effective={attack:data.profile.attack,defense:data.profile.defense,max_hp:data.profile.max_hp};
  inventory.filter(i=>i.equipped&&hasPrerequisites(i.data,data)).forEach(i=>{effective.attack+=Number(i.data.attack||0);effective.defense+=Number(i.data.defense||0);effective.max_hp+=Number(i.data.hp||0);});
  effective.attack=Math.max(1,effective.attack);effective.defense=Math.max(0,effective.defense);effective.max_hp=Math.max(1,effective.max_hp);
- const write=(text:string)=>{followLatest.current=true;setLines(v=>[...v.slice(-160),{id:serial.current++,text}]);};
+ const sfxRef=useRef(sfxOn);useEffect(()=>{sfxRef.current=sfxOn;localStorage.setItem('mud_sfx_enabled',String(sfxOn));},[sfxOn]);
+ const musicTrack:MusicTrack=battle?'battle':['square','village','house','healing','library','castle'].includes(loc?.category||'')?'village':'explore';
+ useEffect(()=>{localStorage.setItem('mud_music_enabled',String(musicOn));setBackgroundMusic(musicOn,musicTrack);},[musicOn,musicTrack]);
+ useEffect(()=>()=>stopBackgroundMusic(),[]);
+ const write=(text:string)=>{const sound=sfxForText(text);if(sound)playRetroSfx(sound,sfxRef.current);followLatest.current=true;setLines(v=>[...v.slice(-160),{id:serial.current++,text}]);};
  const focusCommand=()=>{if(!document.querySelector('dialog[open]')&&!input.current?.matches(':disabled'))input.current?.focus({preventScroll:true});};
  useEffect(()=>{if(!busy&&!panelOpen){const frame=requestAnimationFrame(focusCommand);return()=>cancelAnimationFrame(frame);}},[busy,panelOpen]);
  useEffect(()=>{const el=output.current,inner=content.current;if(!el||!inner)return;const observer=new ResizeObserver(()=>{if(followLatest.current)el.scrollTop=el.scrollHeight;});observer.observe(inner);observer.observe(el);return()=>observer.disconnect();},[]);
@@ -86,6 +94,7 @@ export default function AdventureTerminal({data,run,busy=false,panelOpen=false,p
    if(!battle)return;
    const result=await rpc('answer',{p_token:battle.token,p_answer:value,p_effect:effect||null});
    write(`${result.correct?'[정답]':'[오답]'} 가한 피해 ${result.damage} / 받은 피해 ${result.taken}\n${result.explanation}`);
+   window.setTimeout(()=>playRetroSfx(result.correct?'hit':'hurt',sfxRef.current),180);
    if(result.status==='won')write(`[승리] ${monster?.name||'몬스터'} 처치! EXP +${result.exp}\n창조력 +${result.creativity||0}${result.loot?`\n[전리품] ${result.loot} → 가방에 보관`:''}${result.levels?`\n[LEVEL UP] ${result.levels}레벨 상승! 체력 회복 · 능력치 증가`:''}`);
    if(result.status==='lost')write('[구조] 광장으로 돌아왔습니다. 체력을 회복했으니 다시 도전하세요.');
    if(result.stones)write(`[전리품] 강화의 돌 +${result.stones}개 · 가방에서 확인하세요.`);
@@ -95,6 +104,11 @@ export default function AdventureTerminal({data,run,busy=false,panelOpen=false,p
  const act=(raw:string)=>{
    let cmd=raw.trim();if(!cmd||busy||panelOpen)return;
    write(`PS C:\\우리반\\${loc?.name||'광장'}> ${cmd}`);setHistory(h=>[...h.slice(-80),cmd]);setHistoryIndex(-1);
+   const compact=cmd.replace(/\s/g,'');
+   if(compact==='음악켜기'){setBackgroundMusic(true,musicTrack);setMusicOn(true);write('[음악] 배경음악을 켰습니다. 장소와 전투 상황에 따라 음악이 바뀝니다.');return;}
+   if(compact==='음악끄기'||compact==='음악꺼기'){setMusicOn(false);stopBackgroundMusic();write('[음악] 배경음악을 껐습니다.');return;}
+   if(compact==='효과음켜기'){setSfxOn(true);playRetroSfx('correct',true);write('[효과음] 고전 게임 효과음을 켰습니다.');return;}
+   if(compact==='효과음끄기'||compact==='효과음꺼기'){setSfxOn(false);write('[효과음] 효과음을 껐습니다.');return;}
    if(healRequest.current){const pending=healRequest.current;if(!['y','n'].includes(cmd.toLowerCase())){write('[회복 확인] y(회복) 또는 n(취소)를 입력하세요.');return;}healRequest.current=null;setHealPending(false);if(cmd.toLowerCase()==='n'){write('[회복] 전체 회복을 취소했습니다.');return;}if(pending.location!==data.profile.location||battle){write('[회복] 장소나 전투 상태가 바뀌었습니다. 다시 요청하세요.');return;}execute(async()=>{const r=await rpc('explore',{p_command:'전체회복',p_request:pending.request});write(r.text);});return;}
    if(cmd.replace(/\s/g,'')==='전체회복'){if(battle||!['square','healing','house'].includes(loc?.category||'')){write('[회복] 전투 밖의 광장·주택·치유소에서 이용하세요.');return;}healRequest.current={location:data.profile.location,request:crypto.randomUUID()};setHealPending(true);write('[회복 확인] 창조력 2를 사용해 체력과 마력을 모두 회복할까요?\ny: 회복하기 / n: 취소하기');return;}
    if(onAppCommand?.(cmd))return;
@@ -114,7 +128,7 @@ export default function AdventureTerminal({data,run,busy=false,panelOpen=false,p
        else {await rpc('equipment',{p_item:item.id,p_equip:itemAction[1]==='장착'});write(`${item.name} ${itemAction[1]} 완료.`);}return;}
      if(cmd==='공격'){const b=await rpc('start_battle');write(`[전투] ${data.entities.find(e=>e.id===b.monster)?.name||'몬스터'}${b.level?` (Lv.${b.level})`:''} 발견! 문제를 풀어 행동하세요.`);}
      else if(cmd==='후퇴'){await rpc('escape');write('[후퇴] 전투에서 물러났습니다.');}
-     else if(['동','서','남','북','봐라','회복','전체회복','대화','읽기','열기','입장','퇴장'].includes(cmd)) {const r=await rpc('explore',{p_command:cmd==='퇴장'?'나가기':cmd,p_request:crypto.randomUUID()});write(r.text.replaceAll('「나가기」','「퇴장」').replace('몬스터가 나타났습니다',`${data.entities.find(e=>e.id===r.battle?.monster)?.name||'몬스터'}${r.battle?.level?` (Lv.${r.battle.level})`:''} 등장`));}
+     else if(['동','서','남','북','봐라','회복','전체회복','대화','읽기','열기','입장','퇴장'].includes(cmd)) {const r=await rpc('explore',{p_command:cmd==='퇴장'?'나가기':cmd,p_request:crypto.randomUUID()});if(['동','서','남','북','입장','퇴장'].includes(cmd))playRetroSfx('move',sfxRef.current);write(r.text.replaceAll('「나가기」','「퇴장」').replace('몬스터가 나타났습니다',`${data.entities.find(e=>e.id===r.battle?.monster)?.name||'몬스터'}${r.battle?.level?` (Lv.${r.battle.level})`:''} 등장`));}
      else throw new Error('알 수 없는 명령입니다. 도움말을 입력하세요.');
    });
  };
